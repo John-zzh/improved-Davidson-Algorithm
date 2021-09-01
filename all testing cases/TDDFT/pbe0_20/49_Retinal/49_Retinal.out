@@ -1,0 +1,3861 @@
+curpath /scratch/pbsjobs/job.15978482.hpc
+lib.num_threads() =  16
+at beginning memory used: 0.05 GB
+mol.max_memory 50000
+#INFO: **** input file is /home/zzz6/bench/scripts/Davidson_Jul9.py ****
+import time
+import numpy as np
+import scipy
+from opt_einsum import contract as einsum
+import pyscf
+from pyscf import gto, scf, dft, tddft, data, lib
+import argparse
+import os
+import psutil
+import yaml
+
+'''wb97x  methanol, 1e-5
+  sTDDFT no truncate [6.46636611 8.18031534 8.38140651 9.45011415 9.5061059 ]
+            40 eV    [6.46746642 8.18218267 8.38314651 9.45214869 9.5126739 ]
+    sTDA no truncate [6.46739711 8.18182208 8.38358473 9.45195554 9.52133129]
+            40 eV    [6.46827111 8.18334703 8.38483801 9.45361525 9.52562255]
+'''
+print('curpath', os.getcwd())
+print('lib.num_threads() = ', lib.num_threads())
+
+def gen_args():
+    parser = argparse.ArgumentParser(description='Davidson')
+    parser.add_argument('-x', '--xyzfile',          type=str,   default='NA',  help='xyz filename (molecule.xyz)')
+    parser.add_argument('-chk', '--checkfile',      type=bool,  default=False, help='checkpoint filename (.chk)')
+    parser.add_argument('-m', '--method',           type=str,   default='RKS', help='RHF RKS UHF UKS')
+    parser.add_argument('-f', '--functional',       type=str,   default='NA',  help='xc functional')
+    parser.add_argument('-b', '--basis_set',        type=str,   default='NA',  help='basis set')
+    parser.add_argument('-df', '--density_fit',     type=bool,  default=True,  help='density fitting turn on')
+    parser.add_argument('-g', '--grid_level',       type=int,   default='3',   help='0-9, 9 is best')
+
+    parser.add_argument('-n','--nstates',           type=int,   default = 4,      help='number of excited states')
+    parser.add_argument('-pytd','--pytd',           type=bool,  default = False , help='whether to compare with PySCF TDDFT')
+
+    parser.add_argument('-TDA','--TDA',             type=bool,  default = False, help='perform TDA')
+    parser.add_argument('-TDDFT','--TDDFT',         type=bool,  default = False, help='perform TDDFT')
+    parser.add_argument('-dynpol','--dynpol',       type=bool,  default = False, help='perform dynamic polarizability')
+    parser.add_argument('-omega','--dynpol_omega',  type=float, default = [], nargs='+', help='dynamic polarizability with perurbation omega, a list')
+    parser.add_argument('-stapol','--stapol',       type=bool,  default = False, help='perform static polarizability')
+    parser.add_argument('-sTDA','--sTDA',           type=bool,  default = False, help='perform sTDA calculation')
+    parser.add_argument('-sTDDFT','--sTDDFT',       type=bool,  default = False, help='perform sTDDFT calculation')
+    parser.add_argument('-TT','--Truncate_test',    type=bool,  default = False, help='test the wall time for different virtual truncation')
+
+    parser.add_argument('-TV','--truncate_virtual', type=float, default = 40,    help='the threshold to truncate virtual orbitals, in eV')
+
+    parser.add_argument('-o','--ip_options',        type=int,   default = [0], nargs='+', help='0-7')
+    parser.add_argument('-t','--conv_tolerance',    type=float, default= 1e-5, help='residual norm Convergence threhsold')
+
+    parser.add_argument('-it','--initial_TOL',      type=float, default= 1e-3, help='conv for the inital guess')
+    parser.add_argument('-pt','--precond_TOL',      type=float, default= 1e-2, help='conv for TDA preconditioner')
+
+    parser.add_argument('-ei','--extrainitial',     type=int,   default= 8,    help='number of extral TDA initial guess vectors, 0-8')
+    parser.add_argument('-max','--max',             type=int,   default= 30,   help='max iterations')
+
+    parser.add_argument('-et','--eigensolver_tol',  type=float, default= 1e-5, help='conv for new guess generator in new_ES')
+    parser.add_argument('-M','--memory',            type=int,   default= 4000, help='max_memory')
+    parser.add_argument('-v','--verbose',           type=int,   default= 5,    help='mol.verbose = 3,4,5')
+
+    parser.add_argument('-be','--beta',             type=float, default= [],    nargs='+', help='beta = 0.83')
+    parser.add_argument('-al','--alpha',            type=float, default= [],    nargs='+', help='alpha = 0.83')
+
+    args = parser.parse_args()
+    if args.dynpol == True and args.dynpol_omega == []:
+        raise ValueError('External Perturbation ω cannot be None')
+    return args
+args = gen_args()
+
+def show_memory_info(hint):
+    pid = os.getpid()
+    p = psutil.Process(pid)
+    info = p.memory_full_info()
+    memory = info.uss / 1024**3
+    print('{} memory used: {:<.2f} GB'.format(hint, memory))
+
+show_memory_info('at beginning')
+
+'''read xyz file and delete its first two lines'''
+basename = args.xyzfile.split('.',1)[0]
+
+def SCF_kernel():
+    kernel_0 = time.time()
+    f = open(args.xyzfile)
+    atom_coordinates = f.readlines()
+    del atom_coordinates[:2]
+    '''build geometry in PySCF'''
+    mol = gto.Mole()
+    mol.atom = atom_coordinates
+    mol.basis = args.basis_set
+    mol.verbose = args.verbose
+    mol.max_memory = args.memory
+    print('mol.max_memory', mol.max_memory)
+    mol.build(parse_arg = False)
+    '''DFT or HF'''
+    if args.method == 'RKS':
+        mf = dft.RKS(mol)
+    elif args.method == 'UKS':
+        mf = dft.UKS(mol)
+    elif args.method == 'RHF':
+        mf = scf.RHF(mol)
+    elif args.method == 'UHF':
+        mf = scf.UHF(mol)
+    if 'KS' in args.method:
+        print('RKS')
+        mf.xc = args.functional
+        mf.grids.level = args.grid_level
+    else:
+        print('HF')
+    if args.density_fit:
+        mf = mf.density_fit()
+        print('Density fitting turned on')
+    if args.checkfile == True:
+        '''use the *.chk file as scf input'''
+        mf.chkfile = basename + '_' + args.functional + '.chk'
+        mf.init_guess = 'chkfile'
+    mf.conv_tol = 1e-10
+    print ('Molecule built')
+    print ('Calculating SCF Energy...')
+    mf.kernel()
+
+    kernel_1 = time.time()
+    kernel_t = kernel_1 - kernel_0
+
+    return mol, mf, kernel_t
+
+mol, mf, kernel_t = SCF_kernel()
+
+print ('SCF Done after %.2f'%kernel_t, 'seconds')
+
+show_memory_info('after SCF')
+
+'''Collect everything needed from PySCF'''
+
+Hartree_to_eV = 27.211386245988
+
+def gen_global_var():
+    '''TDA_vind & TDDFT_vind are ab-initio matrix vector multiplication function
+    '''
+    td = tddft.TDA(mf)
+    TD = tddft.TDDFT(mf)
+    TDA_vind, hdiag = td.gen_vind(mf)
+    TDDFT_vind, Hdiag = TD.gen_vind(mf)
+
+    Natm = mol.natm
+    '''mf.mo_occ is an array of occupance [2,2,2,2,2,0,0,0,0.....]
+       N_bf is the total amount of MOs
+       coefficient_matrix_C is the unorthonormalized coefficient matrix
+       if no truncation, then max_vir = n_vir and n_occ + max_vir = N_bf
+    '''
+    mo_occ = mf.mo_occ
+    coefficient_matrix_C = mf.mo_coeff
+    N_bf = len(mo_occ)
+    n_occ = len(np.where(mo_occ > 0)[0])
+    n_vir = len(np.where(mo_occ == 0)[0])
+    delta_hdiag = hdiag.reshape(n_occ, n_vir)
+    A_size = n_occ * n_vir
+
+    tol_eV = args.truncate_virtual/Hartree_to_eV
+    homo_vir = delta_hdiag[-1,:]
+    max_vir = len(np.where(homo_vir <= tol_eV)[0])
+
+    max_vir_hdiag = delta_hdiag[:,:max_vir]
+
+    A_reduced_size = n_occ * max_vir
+
+    '''R_array is inter-particle distance array
+       unit == ’Bohr’, 5.29177210903(80)×10^(−11) m
+    '''
+    R_array = pyscf.gto.mole.inter_distance(mol, coords=None)
+
+    print('hdiag shape', hdiag.shape)
+    print('n_occ = ', n_occ)
+    print('n_vir = ', n_vir)
+    print('max_vir = ', max_vir)
+    print('A_size = ', A_size)
+    print('A_reduced_size =', A_reduced_size)
+
+    return TDA_vind, TDDFT_vind, hdiag, max_vir_hdiag, delta_hdiag,\
+                    max_vir_hdiag, Natm, coefficient_matrix_C, N_bf, n_occ,\
+                        n_vir, max_vir, A_size, A_reduced_size, R_array
+
+TDA_vind, TDDFT_vind, hdiag, max_vir_hdiag, delta_hdiag,\
+        max_vir_hdiag, Natm, coefficient_matrix_C, N_bf, n_occ,\
+             n_vir, max_vir, A_size, A_reduced_size, R_array = gen_global_var()
+
+def TDA_matrix_vector(V):
+    '''return AX'''
+    return TDA_vind(V.T).T
+
+def TDDFT_matrix_vector(X, Y):
+    '''return AX + BY and AY + BX'''
+    XY = np.vstack((X,Y)).T
+    U = TDDFT_vind(XY)
+    U1 = U[:,:A_size].T
+    U2 = -U[:,A_size:].T
+    return U1, U2
+
+def static_polarizability_matrix_vector(X):
+    '''return (A+B)X
+       this is not the optimum way, but the only way in PySCF
+    '''
+    U1, U2 = TDDFT_matrix_vector(X,X)
+    return U1
+
+def gen_HARDNESS():
+    '''a dictionary of chemical hardness, by mappig two lists:
+       list of elements 1-94
+       list of hardness for elements 1-94, floats,in Hartree
+    '''
+    elements = ['H' , 'He', 'Li', 'Be', 'B' , 'C' , 'N' , 'O' , 'F' , 'Ne', \
+    'Na', 'Mg', 'Al', 'Si', 'P' , 'S' , 'Cl', 'Ar', 'K' , 'Ca','Sc', 'Ti', \
+    'V' , 'Cr', 'Mn', 'Fe', 'Co', 'Ni', 'Cu', 'Zn','Ga', 'Ge', 'As', 'Se', \
+    'Br', 'Kr', 'Rb', 'Sr', 'Y' , 'Zr','Nb', 'Mo', 'Tc', 'Ru', 'Rh', 'Pd', \
+    'Ag', 'Cd', 'In', 'Sn','Sb', 'Te', 'I' , 'Xe', 'Cs', 'Ba', 'La', 'Ce', \
+    'Pr', 'Nd','Pm', 'Sm', 'Eu', 'Gd', 'Tb', 'Dy', 'Ho', 'Er', 'Tm', 'Yb',\
+    'Lu', 'Hf', 'Ta', 'W' , 'Re', 'Os', 'Ir', 'Pt', 'Au', 'Hg','Tl', 'Pb', \
+    'Bi', 'Po', 'At', 'Rn', 'Fr', 'Ra', 'Ac', 'Th', 'Pa', 'U' , 'Np', 'Pu']
+    hardness = [0.47259288,0.92203391,0.17452888,0.25700733,0.33949086,\
+    0.42195412,0.50438193,0.58691863,0.66931351,0.75191607,0.17964105,\
+    0.22157276,0.26348578,0.30539645,0.34734014,0.38924725,0.43115670,\
+    0.47308269,0.17105469,0.20276244,0.21007322,0.21739647,0.22471039,\
+    0.23201501,0.23933969,0.24665638,0.25398255,0.26128863,0.26859476,\
+    0.27592565,0.30762999,0.33931580,0.37235985,0.40273549,0.43445776,\
+    0.46611708,0.15585079,0.18649324,0.19356210,0.20063311,0.20770522,\
+    0.21477254,0.22184614,0.22891872,0.23598621,0.24305612,0.25013018,\
+    0.25719937,0.28784780,0.31848673,0.34912431,0.37976593,0.41040808,\
+    0.44105777,0.05019332,0.06762570,0.08504445,0.10247736,0.11991105,\
+    0.13732772,0.15476297,0.17218265,0.18961288,0.20704760,0.22446752,\
+    0.24189645,0.25932503,0.27676094,0.29418231,0.31159587,0.32902274,\
+    0.34592298,0.36388048,0.38130586,0.39877476,0.41614298,0.43364510,\
+    0.45104014,0.46848986,0.48584550,0.12526730,0.14268677,0.16011615,\
+    0.17755889,0.19497557,0.21240778,0.07263525,0.09422158,0.09920295,\
+    0.10418621,0.14235633,0.16394294,0.18551941,0.22370139]
+    HARDNESS = dict(zip(elements,hardness))
+    return HARDNESS
+
+def matrix_power(S,a):
+    '''X == S^a'''
+    s,ket = np.linalg.eigh(S)
+    s = s**a
+    X = np.dot(ket*s,ket.T)
+    return X
+
+def orthonormalize(C):
+    ''' produce orthonormalized coefficient matrix C, N_bf * N_bf
+        S = mf.get_ovlp()  is basis overlap matrix
+        S = np.dot(np.linalg.inv(c.T), np.linalg.inv(c))
+        np.dot(C.T,C) is a an identity matrix
+    '''
+    S = mf.get_ovlp()
+    X = matrix_power(S, 0.5)
+    C = np.dot(X,C)
+    return C
+
+def gen_alpha_beta_ax():
+    RSH_F = [
+    'lc-b3lyp',
+    'wb97',
+    'wb97x',
+    'wb97x-d3',
+    'cam-b3lyp']
+    RSH_paramt = [
+    [0.53, 8.00, 4.50],
+    [0.61, 8.00, 4.41],
+    [0.56, 8.00, 4.58],
+    [0.51, 8.00, 4.51],
+    [0.38, 1.86, 0.90]]
+    RSH_F_paramt = dict(zip(RSH_F, RSH_paramt))
+
+    '''NA is for Hartree-Fork'''
+    hybride_F = ['b3lyp', 'tpssh', 'm05-2x', 'pbe0', 'm06', 'm06-2x', 'NA']
+    hybride_paramt = [0.2, 0.1, 0.56, 0.25, 0.27, 0.54, 1]
+    Func_ax = dict(zip(hybride_F, hybride_paramt))
+
+    beta1 = 0.2
+    beta2 = 1.83
+    alpha1 = 1.42
+    alpha2 = 0.48
+    '''RSH functionals have specific a_x, beta, alpha values;
+       hybride fucntionals have fixed alpha12 and beta12 values,
+       with different a_x values, by which create beta, alpha
+    '''
+    if args.functional in RSH_F:
+        a_x, beta, alpha = RSH_F_paramt[args.functional]
+    elif args.functional in hybride_F:
+        a_x = Func_ax[args.functional]
+        beta = beta1 + beta2 * a_x
+        alpha = alpha1 + alpha2 * a_x
+
+    if args.beta != []:
+        beta = args.beta[0]
+
+    if args.alpha != []:
+        alpha = args.alpha[0]
+
+    print('a_x =', a_x)
+    print('beta =', beta)
+    print('alpha =', alpha)
+
+    return a_x, beta, alpha
+
+a_x, beta, alpha = gen_alpha_beta_ax()
+
+def gen_gammaJK():
+    '''creat GammaK and GammaK matrix
+       mol.atom_pure_symbol(atom_id) returns the element symbol
+    '''
+    HARDNESS = gen_HARDNESS()
+    a = [HARDNESS[mol.atom_pure_symbol(atom_id)] for atom_id in range(Natm)]
+    a = np.asarray(a).reshape(1,-1)
+    eta = (a+a.T)/2
+    GammaJ = (R_array**beta + (a_x * eta)**(-beta))**(-1/beta)
+    GammaK = (R_array**alpha + eta**(-alpha)) **(-1/alpha)
+    return GammaJ, GammaK
+
+def generateQ():
+    '''build q_iajb tensor'''
+    C = orthonormalize(coefficient_matrix_C)
+    aoslice = mol.aoslice_by_atom()
+    q = np.zeros([Natm, N_bf, N_bf])
+    for atom_id in range(Natm):
+        shst, shend, atstart, atend = aoslice[atom_id]
+        q[atom_id,:, :] = np.dot(C[atstart:atend, :].T, C[atstart:atend, :])
+    return q
+
+def gen_QJK(max_vir=max_vir):
+
+    '''pre-calculate and store the Q-Gamma rank 3 tensor
+       qia * gamma * qjb -> qia GK_q_jb
+    '''
+    Qstart = time.time()
+    q_tensors = generateQ()
+    GammaJ, GammaK = gen_gammaJK()
+
+    q_ij = np.zeros((Natm, n_occ, n_occ))
+    q_ij[:,:,:] = q_tensors[:,:n_occ,:n_occ]
+
+    q_ab = np.zeros((Natm, max_vir, max_vir))
+    q_ab[:,:,:] = q_tensors[:,n_occ:n_occ+max_vir,n_occ:n_occ+max_vir]
+
+    q_ia = np.zeros((Natm, n_occ, max_vir))
+    q_ia[:,:,:] = q_tensors[:,:n_occ,n_occ:n_occ+max_vir]
+
+    GK_q_jb = einsum("Bjb,AB->Ajb", q_ia, GammaK)
+    GJ_q_ab = einsum("Bab,AB->Aab", q_ab, GammaJ)
+    Qend = time.time()
+    Q_time = Qend - Qstart
+    print('Q-Gamma tensors building time = %.2f'%Q_time)
+    return q_ij, q_ab, q_ia , GK_q_jb, GJ_q_ab
+
+q_ij, q_ab, q_ia , GK_q_jb, GJ_q_ab = gen_QJK()
+
+show_memory_info('after Q matrix')
+
+def gen_iajb_ijab_ibja_delta_fly(max_vir = max_vir, \
+                                    q_ij = q_ij, \
+                                    q_ab = q_ab, \
+                                    q_ia = q_ia , \
+                                 GK_q_jb = GK_q_jb, \
+                                 GJ_q_ab = GJ_q_ab):
+    '''define sTDA on-the-fly two electron intergeral (pq|rs)
+       A_iajb * v = delta_ia_ia*v + 2(ia|jb)*v - (ij|ab)*v
+       iajb_v = einsum('Aia,Bjb,AB,jbm -> iam', q_ia, q_ia, GammaK, V)
+       ijab_v = einsum('Aij,Bab,AB,jbm -> iam', q_ij, q_ab, GammaJ, V)
+    '''
+    def iajb_fly(V):
+        '''(ia|jb) '''
+        GK_q_jb_V = einsum("Ajb,jbm->Am", GK_q_jb, V)
+        iajb_V = einsum("Aia,Am->iam", q_ia, GK_q_jb_V)
+        return iajb_V
+
+    def ijab_fly(V):
+        '''(ij|ab) '''
+        GJ_q_ab_V = einsum("Aab,jbm->Ajam", GJ_q_ab, V)
+        ijab_V = einsum("Aij,Ajam->iam", q_ij, GJ_q_ab_V)
+        return ijab_V
+
+    def ibja_fly(V):
+        '''the Forck exchange energy in B matrix
+           (ib|ja)
+        '''
+        q_ib_V = einsum("Aib,jbm->Ajim", q_ia, V)
+        ibja_V = einsum("Aja,Ajim->iam", GK_q_jb, q_ib_V)
+        return ibja_V
+
+    def delta_fly(V):
+        '''delta_hdiag.shape = (n_occ, n_vir)'''
+        delta_v = einsum("ia,iam->iam", delta_hdiag, V)
+        return delta_v
+
+    def delta_max_vir_fly(V):
+        '''max_vir_hdiag.shape = (n_occ, max_vir)'''
+        delta_max_vir_v = einsum("ia,iam->iam", max_vir_hdiag, V)
+        return delta_max_vir_v
+
+    return iajb_fly, ijab_fly, ibja_fly, delta_fly, delta_max_vir_fly
+
+iajb_fly, ijab_fly, ibja_fly, delta_fly, delta_max_vir_fly = \
+                                                gen_iajb_ijab_ibja_delta_fly()
+
+def gen_sTDA_sTDDFT_stapol_fly(max_vir = max_vir, \
+                              iajb_fly = iajb_fly, \
+                              ijab_fly = ijab_fly, \
+                              ibja_fly = ibja_fly, \
+                     delta_max_vir_fly = delta_max_vir_fly):
+
+    def sTDA_mv(V):
+        '''return AX'''
+        V = V.reshape(n_occ, max_vir, -1)
+        '''MV =  delta_fly(V) + 2*iajb_fly(V) - ijab_fly(V)'''
+        MV = delta_max_vir_fly(V) + 2*iajb_fly(V) - ijab_fly(V)
+        MV = MV.reshape(n_occ*max_vir,-1)
+        return MV
+
+    def sTDDFT_mv(X, Y):
+        '''return AX+BY and AY+BX
+           sTDA_A =  delta_fly(V) + 2*iajb_fly(V) - ijab_fly(V)
+           sTDDFT_B = 2*iajb_fly(V) - a_x*ibja_fly(V)
+        '''
+        X = X.reshape(n_occ, max_vir,-1)
+        Y = Y.reshape(n_occ, max_vir,-1)
+
+        X_max_vir = X[:,:max_vir,:]
+        Y_max_vir = Y[:,:max_vir,:]
+
+        iajb_X = iajb_fly(X_max_vir)
+        iajb_Y = iajb_fly(Y_max_vir)
+
+        ijab_X = ijab_fly(X_max_vir)
+        ijab_Y = ijab_fly(Y_max_vir)
+
+        ibja_X = ibja_fly(X_max_vir)
+        ibja_Y = ibja_fly(Y_max_vir)
+
+        delta_X = delta_max_vir_fly(X_max_vir)
+        delta_Y = delta_max_vir_fly(Y_max_vir)
+
+        AX = delta_X + 2*iajb_X - ijab_X
+        AY = delta_Y + 2*iajb_Y - ijab_Y
+
+        BX = 2*iajb_X - a_x*ibja_X
+        BY = 2*iajb_Y - a_x*ibja_Y
+
+        U1 = np.zeros_like(X)
+        U2 = np.zeros_like(X)
+
+        U1[:,:max_vir,:] = AX + BY
+        U2[:,:max_vir,:] = AY + BX
+
+        U1 = U1.reshape(n_occ*max_vir,-1)
+        U2 = U2.reshape(n_occ*max_vir,-1)
+
+        return U1, U2
+
+    def sTDDFT_stapol_mv(X):
+        '''return (A+B)X = delta_fly(V) + 4*iajb_fly(V)
+           - ijab_fly(V) - a_x*ibja_fly(V)
+        '''
+        X = X.reshape(n_occ, max_vir, -1)
+        U = delta_max_vir_fly(X) + 4*iajb_fly(X) - ijab_fly(X) - a_x*ibja_fly(X)
+        U = U.reshape(n_occ*max_vir, -1)
+
+        return U
+
+    return sTDA_mv, sTDDFT_mv, sTDDFT_stapol_mv
+
+sTDA_mv, sTDDFT_mv, sTDDFT_stapol_mv = gen_sTDA_sTDDFT_stapol_fly()
+
+def Gram_Schmidt_bvec(A, bvec):
+    '''orthonormalize vector b against all vectors in A
+       b = b - A*(A.T*b)
+       suppose A is orthonormalized
+    '''
+    if A.shape[1] != 0:
+        projections_coeff = np.dot(A.T, bvec)
+        bvec -= np.dot(A, projections_coeff)
+    return bvec
+
+def VW_Gram_Schmidt(x, y, V, W):
+    '''orthonormalize vector |x,y> against all vectors in |V,W>'''
+    m = np.dot(V.T,x)
+    m += np.dot(W.T,y)
+
+    n = np.dot(W.T,x)
+    n += np.dot(V.T,y)
+
+    x -= np.dot(V,m)
+    x -= np.dot(W,n)
+
+    y -= np.dot(W,m)
+    y -= np.dot(V,n)
+    return x, y
+
+def Gram_Schmidt_fill_holder(V, count, vecs):
+    '''V is a vectors holder
+       count is the amount of vectors that already sit in the holder
+       nvec is amount of new vectors intended to fill in the V
+       count will be final amount of vectors in V
+    '''
+    nvec = np.shape(vecs)[1]
+    for j in range(nvec):
+        vec = vecs[:, j].reshape(-1,1)
+        vec = Gram_Schmidt_bvec(V[:, :count], vec)   #single orthonormalize
+        vec = Gram_Schmidt_bvec(V[:, :count], vec)   #double orthonormalize
+        norm = np.linalg.norm(vec)
+        if  norm > 1e-14:
+            vec = vec/norm
+            V[:, count] = vec[:,0]
+            count += 1
+    new_count = count
+    return V, new_count
+
+def S_symmetry_orthogonal(x,y):
+    '''symmetrically orthogonalize the vectors |x,y> and |y,x>
+       as close to original vectors as possible
+    '''
+    x_p_y = x + y
+    x_p_y_norm = np.linalg.norm(x_p_y)
+
+    x_m_y = x - y
+    x_m_y_norm = np.linalg.norm(x_m_y)
+
+    a = x_p_y_norm/x_m_y_norm
+
+    x_p_y /= 2
+    x_m_y *= a/2
+
+    new_x = x_p_y + x_m_y
+    new_y = x_p_y - x_m_y
+
+    return new_x, new_y
+
+def symmetrize(A):
+    A = (A + A.T)/2
+    return A
+
+def anti_symmetrize(A):
+    A = (A - A.T)/2
+    return A
+
+def check_orthonormal(A):
+    '''define the orthonormality of a matrix A as the norm of (A.T*A - I)'''
+    n = np.shape(A)[1]
+    B = np.dot(A.T, A)
+    c = np.linalg.norm(B - np.eye(n))
+    return c
+
+def VW_Gram_Schmidt_fill_holder(V_holder, W_holder, m, X_new, Y_new):
+    '''put X_new into V, and Y_new into W
+       m: the amount of vectors that already on V or W
+       nvec: amount of new vectors intended to put in the V and W
+    '''
+    VWGSstart = time.time()
+    nvec = np.shape(X_new)[1]
+
+    GScost = 0
+    normcost = 0
+    symmetrycost = 0
+    for j in range(0, nvec):
+        V = V_holder[:,:m]
+        W = W_holder[:,:m]
+
+        x_tmp = X_new[:,j].reshape(-1,1)
+        y_tmp = Y_new[:,j].reshape(-1,1)
+
+        GSstart = time.time()
+        x_tmp,y_tmp = VW_Gram_Schmidt(x_tmp, y_tmp, V, W)
+        x_tmp,y_tmp = VW_Gram_Schmidt(x_tmp, y_tmp, V, W)
+        GSend = time.time()
+        GScost += GSend - GSstart
+
+        symmetrystart = time.time()
+        x_tmp,y_tmp = S_symmetry_orthogonal(x_tmp,y_tmp)
+        symmetryend = time.time()
+        symmetrycost += symmetryend - symmetrystart
+
+        normstart = time.time()
+        xy_norm = (np.dot(x_tmp.T, x_tmp)+np.dot(y_tmp.T, y_tmp))**0.5
+
+        if  xy_norm > 1e-14:
+            x_tmp = x_tmp/xy_norm
+            y_tmp = y_tmp/xy_norm
+
+            V_holder[:,m] = x_tmp[:,0]
+            W_holder[:,m] = y_tmp[:,0]
+            m += 1
+        else:
+            print('vector kicked out during GS orthonormalization')
+        normend = time.time()
+        normcost += normend - normstart
+
+    VWGSend = time.time()
+    VWGScost = VWGSend - VWGSstart
+    # print('GScost',round(GScost/VWGScost *100, 2),'%')
+    # print('normcost',round(normcost/VWGScost *100, 2),'%')
+    # print('symmetrycost', round(symmetrycost/VWGScost *100, 2),'%')
+    # print('check VW orthonormalization')
+    # VW = np.vstack((V_holder[:,:m], W_holder[:,:m]))
+    # WV = np.vstack((W_holder[:,:m], V_holder[:,:m]))
+    # VWWV = np.hstack((VW,WV))
+    # print('check_orthonormal VWWV:',check_orthonormal(VWWV))
+    return V_holder, W_holder, m
+
+def solve_AX_Xla_B(A, omega, Q):
+    '''AX - XΩ  = Q
+       A, Ω, Q are known, solve X
+    '''
+    Qnorm = np.linalg.norm(Q, axis=0, keepdims = True)
+    Q /= Qnorm
+    N_vectors = len(omega)
+    a, u = np.linalg.eigh(A)
+    ub = np.dot(u.T, Q)
+    ux = np.zeros_like(Q)
+    for k in range(N_vectors):
+        ux[:, k] = ub[:, k]/(a - omega[k])
+    X = np.dot(u, ux)
+    X *= Qnorm
+
+    return X
+
+def TDA_A_diag_initial_guess(m, hdiag = hdiag):
+    '''m is the amount of initial guesses'''
+    hdiag = hdiag.reshape(-1,)
+    V_size = hdiag.shape[0]
+    Dsort = hdiag.argsort()
+    energies = hdiag[Dsort][:m]*Hartree_to_eV
+    V = np.zeros((V_size, m))
+    for j in range(m):
+        V[Dsort[j], j] = 1.0
+    return V, energies
+
+def TDA_A_diag_preconditioner(residual, sub_eigenvalue, current_dic = None,\
+                            hdiag = hdiag, tol = None, full_guess=None, \
+                        return_index=None, W_H=None, V_H=None, sub_A_H=None):
+    '''DX = XΩ'''
+    k = np.shape(residual)[1]
+    t = 1e-14
+    D = np.repeat(hdiag.reshape(-1,1), k, axis=1) - sub_eigenvalue
+    '''force all small values not in [-t,t]'''
+    D = np.where( abs(D) < t, np.sign(D)*t, D)
+    new_guess = residual/D
+
+    if current_dic != None:
+        return new_guess, current_dic
+    else:
+        return new_guess
+
+def sTDA_eigen_solver(k, tol=args.initial_TOL):
+    '''A'X = XΩ'''
+    print('sTDA nstate =', k)
+    sTDA_D_start = time.time()
+    max = 30
+
+    '''m is size of subspace'''
+    m = 0
+    new_m = min([k+8, 2*k, A_size])
+    V = np.zeros((A_reduced_size, max*k + m))
+    W = np.zeros_like(V)
+
+    '''V is subsapce basis
+       W is transformed guess vectors'''
+    V[:, :new_m],initial_energies = TDA_A_diag_initial_guess(\
+                                            new_m, hdiag = max_vir_hdiag)
+    for i in range(max):
+        '''create subspace'''
+        W[:, m:new_m] = sTDA_mv(V[:, m:new_m])
+        sub_A = np.dot(V[:,:new_m].T, W[:,:new_m])
+        sub_A = symmetrize(sub_A)
+
+        '''Diagonalize the subspace Hamiltonian, and sorted.
+        sub_eigenvalue[:k] are smallest k eigenvalues'''
+        sub_eigenvalue, sub_eigenket = np.linalg.eigh(sub_A)
+        full_guess = np.dot(V[:,:new_m], sub_eigenket[:, :k])
+
+        '''residual = AX - XΩ = AVx - XΩ = Wx - XΩ'''
+        residual = np.dot(W[:,:new_m], sub_eigenket[:,:k])
+        residual -= full_guess*sub_eigenvalue[:k]
+
+        r_norms = np.linalg.norm(residual, axis=0).tolist()
+        max_norm = np.max(r_norms)
+        if max_norm < tol or i == (max-1):
+            break
+
+        '''index for unconverged residuals'''
+        index = [r_norms.index(i) for i in r_norms if i > tol]
+        '''precondition the unconverged residuals'''
+        new_guess = TDA_A_diag_preconditioner(\
+                        residual = residual[:,index],\
+                  sub_eigenvalue = sub_eigenvalue[:k][index],\
+                           hdiag = max_vir_hdiag)
+
+        '''orthonormalize the new guess against basis and put into V holder'''
+        m = new_m
+        V, new_m = Gram_Schmidt_fill_holder(V, m, new_guess)
+
+    sTDA_D_end = time.time()
+    sTDA_D = sTDA_D_end - sTDA_D_start
+    print('sTDA A diagonalized in', i, 'steps; ', '%.4f'%sTDA_D, 'seconds' )
+    print('threshold =', tol)
+    print('sTDA excitation energies:')
+    print(sub_eigenvalue[:k]*Hartree_to_eV)
+
+    U = np.zeros((n_occ,n_vir,k))
+    U[:,:max_vir,:] = full_guess.reshape(n_occ,max_vir,k)
+    U = U.reshape(A_size, k)
+    omega = sub_eigenvalue[:k]*Hartree_to_eV
+    return U, omega
+
+def sTDA_preconditioner(residual, sub_eigenvalue, tol=args.precond_TOL,\
+                        current_dic=None, full_guess=None, return_index=None,\
+                        W_H=None, V_H=None, sub_A_H=None):
+    '''sTDA preconditioner
+       (A - Ω*I)^-1 P = X
+       AX - XΩ = P
+       P is residuals (in big Davidson's loop) to be preconditioned
+    '''
+    p_start = time.time()
+
+    '''number of vectors to be preconditioned'''
+    N_vectors = residual.shape[1]
+    Residuals = residual.reshape(n_occ,n_vir,-1)
+    omega = sub_eigenvalue
+    P = Residuals[:,:max_vir,:]
+    P = P.reshape(A_reduced_size,-1)
+
+    pnorm = np.linalg.norm(P, axis=0, keepdims = True)
+    P = P/pnorm
+
+    start = time.time()
+    tol = args.precond_TOL # Convergence tolerance
+    max = 30   # Maximum number of iterations
+
+    V = np.zeros((A_reduced_size, (max+1)*N_vectors))
+    W = np.zeros((A_reduced_size, (max+1)*N_vectors))
+    count = 0
+
+    '''now V and W are empty holders, 0 vectors
+       W = sTDA_mv(V)
+       count is the amount of vectors that already sit in the holder
+       in each iteration, V and W will be filled/updated with new guess basis
+       which is the preconditioned residuals
+    '''
+
+    '''initial guess: DX - XΩ = P
+       Dp is the preconditioner
+       <t: returns np.sign(D)*t; else: D
+    '''
+    t = 1e-10
+    Dp = np.repeat(hdiag.reshape(-1,1), N_vectors, axis=1) - omega
+    Dp = np.where(abs(Dp)<t, \
+                                        np.sign(Dp)*t, Dp)
+    Dp = Dp.reshape(n_occ, n_vir, -1)
+    D = Dp[:,:max_vir,:].reshape(A_reduced_size,-1)
+    inv_D = 1/D
+
+    '''generate initial guess'''
+    Xig = P*inv_D
+    count = 0
+    V, new_count = Gram_Schmidt_fill_holder(V, count, Xig)
+
+    origin_dic = current_dic.copy()
+    current_dic['preconditioning'] = []
+    mvcost = 0
+    GScost = 0
+    subcost = 0
+    subgencost = 0
+
+    for i in range(max):
+        substart = time.time()
+        '''project sTDA_A matrix and vector P into subspace'''
+        mvstart = time.time()
+        W[:, count:new_count] = sTDA_mv(V[:, count:new_count])
+        mvend = time.time()
+        mvcost += mvend - mvstart
+
+        sub_P= np.dot(V[:,:new_count].T, P)
+        sub_A = np.dot(V[:,:new_count].T, W[:,:new_count])
+        subend = time.time()
+        subgencost += subend - substart
+
+        sub_A = symmetrize(sub_A)
+        m = np.shape(sub_A)[0]
+
+        substart = time.time()
+        sub_guess = solve_AX_Xla_B(sub_A, omega, sub_P)
+        subend = time.time()
+        subcost += subend - substart
+
+        full_guess = np.dot(V[:,:new_count], sub_guess)
+        residual = np.dot(W[:,:new_count], sub_guess) - full_guess*omega - P
+
+        r_norms = np.linalg.norm(residual, axis=0).tolist()
+        current_dic['preconditioning'].append(\
+                                    {'precondition residual norms': r_norms})
+
+        max_norm = np.max(r_norms)
+        if max_norm < tol or i == (max-1):
+            break
+
+        '''index of unconverged states'''
+        index = [r_norms.index(i) for i in r_norms if i > tol]
+
+        '''precondition the unconverged residuals'''
+        new_guess = residual[:,index]*inv_D[:,index]
+
+
+        GSstart = time.time()
+        count = new_count
+        V, new_count = Gram_Schmidt_fill_holder(V, count, new_guess)
+        GSend = time.time()
+        GScost += GSend - GSstart
+
+    p_end = time.time()
+    p_cost = p_end - p_start
+
+    if i == (max -1):
+        print('_____sTDA Preconditioner Failed Due to Iteration Limit _______')
+        print('failed after ', i, 'steps,', '%.4f'%p_cost,'s')
+        print('orthonormality of V', check_orthonormal(V[:,:count]))
+        print('current residual norms', r_norms)
+    else:
+        print('sTDA precond Done after', i, 'steps;', '%.4f'%p_cost,'seconds')
+
+    print('max_norm = ', '%.2e'%max_norm)
+    for enrty in ['subgencost', 'mvcost', 'GScost', 'subcost']:
+        cost = locals()[enrty]
+        print("{:<10} {:<5.4f}s  {:<5.2%}".format(enrty, cost, cost/p_cost))
+    full_guess *= pnorm
+
+    U = np.zeros((n_occ,n_vir,N_vectors))
+    U[:,:max_vir,:] = full_guess.reshape(n_occ,max_vir,-1)
+
+    if max_vir < n_vir:
+        ''' DX2 - X2*Omega = P2'''
+        P2 = Residuals[:,max_vir:,:]
+        P2 = P2.reshape(n_occ*(n_vir-max_vir),-1)
+
+        D2 = Dp[:,max_vir:,:]
+        D2 = D2.reshape(n_occ*(n_vir-max_vir),-1)
+        X2 = (P2/D2).reshape(n_occ,n_vir-max_vir,-1)
+        U[:,max_vir:,:] = X2
+
+    U = U.reshape(A_size, -1)
+
+    '''if we want to know more about the preconditioning process,
+        return the current_dic, rather than origin_dic'''
+    if current_dic != None:
+        return U, origin_dic
+    else:
+        return U
+
+def Jacobi_preconditioner(residual, sub_eigenvalue, current_dic, full_guess,\
+                return_index = None, W_H = None, V_H = None, sub_A_H = None):
+    '''(1-uu*)(A-Ω*I)(1-uu*)t = -B
+       B is residual, we want to solve t
+       z approximates t
+       z = (A-Ω*I)^(-1)*(-B) - α(A-Ω*I)^(-1)*u
+            let K_inv_y = (A-Ω*I)^(-1)*(-B)
+            and K_inv_u = (A-Ω*I)^(-1)*u
+       z = K_inv_y - α*K_inv_u
+       where α = [u*(A-Ω*I)^(-1)y]/[u*(A-Ω*I)^(-1)u]
+       first, solve (A-Ω*I)^(-1)y and (A-Ω*I)^(-1)u
+    '''
+    B = residual
+    omega = sub_eigenvalue
+    u = current_guess
+
+    K_inv_y = sTDA_preconditioner(-B, omega)
+    K_inv_u = sTDA_preconditioner(u, omega)
+    n = np.multiply(u, K_inv_y).sum(axis=0)
+    d = np.multiply(u, K_inv_u).sum(axis=0)
+    Alpha = n/d
+    z = K_inv_y -  Alpha*K_inv_u
+
+    return z, current_dic
+
+def on_the_fly_Hx(W, V, sub_A, x):
+    def Qx(V, x):
+        '''Qx = (1 - V*V.T)*x = x - V*V.T*x'''
+        VX = np.dot(V.T,x)
+        x -= np.dot(V,VX)
+        return x
+    '''on-the-fly compute H'x
+       H′ ≡ W*V.T + V*W.T − V*a*V.T + Q*K*Q
+       K approximates H, here K = sTDA_A
+       H′ ≡ W*V.T + V*W.T − V*a*V.T + (1-V*V.T)sTDA_A(1-V*V.T)
+       H′x ≡ a + b − c + d
+    '''
+    a = einsum('ij, jk, kl -> il', W, V.T, x)
+    b = einsum('ij, jk, kl -> il', V, W.T, x)
+    c = einsum('ij, jk, kl, lm -> im', V, sub_A, V.T, x)
+    d = Qx(V, sTDA_mv(Qx(V, x)))
+    Hx = a + b - c + d
+    return Hx
+
+def new_ES(full_guess, return_index, W_H, V_H, sub_A_H, \
+                        residual=None, sub_eigenvalue=None, current_dic=None):
+    '''new eigenvalue solver, to diagonalize the H'
+       the traditional Davidson to diagonalize the H' matrix
+       W_H, V_H, sub_A_H are from the exact H
+    '''
+    new_ES_start = time.time()
+    tol = args.eigensolver_tol
+    max = 30
+
+    k = args.nstates
+    m = min([k+8, 2*k, A_size])
+
+    V = np.zeros((A_size, max*k + m))
+    W = np.zeros_like(V)
+
+    '''sTDA as initial guess'''
+    V = sTDA_eigen_solver(m, V)
+    W[:,:m] = on_the_fly_Hx(W_H, V_H, sub_A_H, V[:, :m])
+
+    for i in range(max):
+        sub_A = np.dot(V[:,:m].T, W[:,:m])
+        sub_eigenvalue, sub_eigenket = np.linalg.eigh(sub_A)
+        residual = np.dot(W[:,:m], sub_eigenket[:,:k])
+        residual -= np.dot(V[:,:m], sub_eigenket[:,:k] * sub_eigenvalue[:k])
+
+        r_norms = np.linalg.norm(residual, axis=0).tolist()
+        max_norm = np.max(r_norms)
+        if max_norm < tol or i == (max-1):
+            break
+        index = [r_norms.index(i) for i in r_norms if i > tol]
+
+        new_guess = TDA_A_diag_preconditioner(residual[:,index], \
+                                                    sub_eigenvalue[:k][index])
+        V, new_m = Gram_Schmidt_fill_holder(V, m, new_guess)
+        W[:, m:new_m] = on_the_fly_Hx(W_H, V_H, sub_A_H, V[:, m:new_m])
+        m = new_m
+
+    full_guess = np.dot(V[:,:m], sub_eigenket[:,:k])
+
+    new_ES_end = time.time()
+    new_ES_cost = new_ES_end - new_ES_start
+    print('H_app diagonalization done in',i,'steps; ','%.2f'%new_ES_cost, 's')
+    print('threshold =', tol)
+    return full_guess[:,return_index], current_dic
+
+def gen_TDA_lib():
+    i_lib={}
+    p_lib={}
+    i_lib['sTDA']   = sTDA_eigen_solver
+    i_lib['Adiag']  = TDA_A_diag_initial_guess
+    p_lib['sTDA']   = sTDA_preconditioner
+    p_lib['Adiag']  = TDA_A_diag_preconditioner
+    p_lib['Jacobi'] = Jacobi_preconditioner
+    p_lib['new_ES'] = new_ES
+    return i_lib, p_lib
+
+def fill_dictionary(dic,init,prec,k,icost,pcost,wall_time,N_itr,N_mv,\
+            initial_energies=None,energies=None,difference=None,overlap=None,\
+            tensor_alpha=None, initial_tensor_alpha=None):
+    dic['initial guess'] = init
+    dic['preconditioner'] = prec
+    dic['nstate'] = k
+    dic['molecule'] = basename
+    dic['method'] = args.method
+    dic['functional'] = args.functional
+    dic['threshold'] = args.conv_tolerance
+    dic['SCF time'] = kernel_t
+    dic['Initial guess time'] = icost
+    dic['initial guess threshold'] = args.initial_TOL
+    dic['New guess generating time'] = pcost
+    dic['preconditioner threshold'] = args.precond_TOL
+    dic['total time'] = wall_time
+    dic['excitation energy(eV)'] = energies
+    dic['iterations'] = N_itr
+    dic['A matrix size'] = A_size
+    dic['final subspace size'] = N_mv
+    dic['ax'] = a_x
+    dic['alpha'] = alpha
+    dic['beta'] = beta
+    dic['virtual truncation tol'] = args.truncate_virtual
+    dic['n_occ'] = n_occ
+    dic['n_vir'] = n_vir
+    dic['max_vir'] = max_vir
+    dic['semiempirical_difference'] = difference
+    dic['overlap'] = overlap
+    dic['initial_energies'] = initial_energies
+    dic['Dynamic polarizability wavelength'] = args.dynpol_omega
+    dic['Dynamic polarizability tensor alpha'] = tensor_alpha
+    dic['Dynamic polarizability initial tensor alpha'] = initial_tensor_alpha
+    return dic
+
+def Davidson(init, prec, k=args.nstates, tol=args.conv_tolerance):
+    '''Davidson frame, we can use different initial guess and preconditioner'''
+    D_start = time.time()
+    Davidson_dic = {}
+    Davidson_dic['iteration'] = []
+    iteration_list = Davidson_dic['iteration']
+
+    TDA_i_lib, TDA_p_lib = gen_TDA_lib()
+    initial_guess = TDA_i_lib[init]
+    new_guess_generator = TDA_p_lib[prec]
+
+    print('Initial guess:  ', init)
+    print('Preconditioner: ', prec)
+
+    init_start = time.time()
+    max = args.max
+    m = 0
+    new_m = min([k + args.extrainitial, 2*k, A_size])
+    V = np.zeros((A_size, max*k + new_m))
+    W = np.zeros_like(V)
+    V[:, :new_m], initial_energies = initial_guess(new_m)
+    init_end = time.time()
+
+    init_time = init_end - init_start
+    print('initial guess time %.4f seconds'%init_time)
+
+    Pcost = 0
+    MVcost = 0
+    for ii in range(max):
+        print('\nIteration ', ii)
+        istart = time.time()
+
+        MV_start = time.time()
+        W[:, m:new_m] = TDA_matrix_vector(V[:,m:new_m])
+        MV_end = time.time()
+        iMVcost = MV_end - MV_start
+        MVcost += iMVcost
+        sub_A = np.dot(V[:,:new_m].T, W[:,:new_m])
+        sub_A = symmetrize(sub_A)
+        print('subspace size: ', np.shape(sub_A)[0])
+
+        sub_eigenvalue, sub_eigenket = np.linalg.eigh(sub_A)
+        full_guess = np.dot(V[:,:new_m], sub_eigenket[:, :k])
+        residual = np.dot(W[:,:new_m], sub_eigenket[:,:k])
+        residual -= full_guess * sub_eigenvalue[:k]
+
+        r_norms = np.linalg.norm(residual, axis=0).tolist()
+        max_norm = np.max(r_norms)
+
+        iteration_list.append({})
+        current_dic = iteration_list[ii]
+        current_dic['residual norms'] = r_norms
+
+        print('maximum residual norm %.2e'%max_norm)
+        if max_norm < tol or ii == (max-1):
+            iend = time.time()
+            icost = iend - istart
+            current_dic['iteration total cost'] = icost
+            current_dic['iteration MV cost'] = iMVcost
+            iteration_list[ii] = current_dic
+            print('iMVcost %.4f'%iMVcost)
+            print('icost %.4f'%icost)
+            print('Davidson procedure Done \n')
+            break
+
+        index = [r_norms.index(i) for i in r_norms if i > tol]
+
+        P_start = time.time()
+        new_guess, current_dic = new_guess_generator(
+                                residual = residual[:,index],
+                          sub_eigenvalue = sub_eigenvalue[:k][index],
+                             current_dic = current_dic,
+                              full_guess = full_guess[:,index],
+                            return_index = index,
+                                     W_H = W[:,:m],
+                                     V_H = V[:,:m],
+                                 sub_A_H = sub_A)
+        P_end = time.time()
+
+        iteration_list[ii] = current_dic
+
+        Pcost += P_end - P_start
+
+        m = new_m
+        V, new_m = Gram_Schmidt_fill_holder(V, m, new_guess)
+        print('new generated guesses:', new_m - m)
+
+        iend = time.time()
+        icost = iend - istart
+        current_dic['iteration cost'] = icost
+        current_dic['iteration MV cost'] = iMVcost
+        iteration_list[ii] = current_dic
+        print('iMVcost %.4f'%iMVcost)
+        print('icost %.4f'%icost)
+
+    energies = sub_eigenvalue[:k]*Hartree_to_eV
+
+    D_end = time.time()
+    Dcost = D_end - D_start
+
+    Davidson_dic = fill_dictionary(Davidson_dic, init=init, prec=prec, k=k,\
+                                icost=init_time, pcost=Pcost, wall_time=Dcost,\
+            energies = energies.tolist(), N_itr=ii+1, N_mv=np.shape(sub_A)[0],\
+            initial_energies=initial_energies.tolist())
+    if ii == max-1:
+        print('========== Davidson Failed Due to Iteration Limit ============')
+        print('current residual norms', r_norms)
+    else:
+        print('------- Davidson done -------')
+    print('max_norm = ', max_norm)
+    print('Total steps =', ii+1)
+    print('Total time: %.4f seconds'%Dcost)
+    print('MVcost %.4f'%MVcost)
+    print('Final subspace shape = %s'%np.shape(sub_A)[0])
+    print('Precond time: %.4f seconds'%Pcost, '{:.2%}'.format(Pcost/Dcost))
+    return energies, full_guess, Davidson_dic
+
+def TDDFT_A_diag_initial_guess(V_holder, W_holder, new_m, hdiag=hdiag):
+    hdiag = hdiag.reshape(-1,)
+    Dsort = hdiag.argsort()
+    V_holder[:,:new_m], energies = TDA_A_diag_initial_guess(new_m, hdiag=hdiag)
+    return V_holder, W_holder, new_m, energies,\
+                V_holder[:,:new_m], W_holder[:,:new_m]
+
+def TDDFT_A_diag_preconditioner(R_x, R_y, omega, hdiag=hdiag, tol=None):
+    '''preconditioners for each corresponding residual (state)'''
+    hdiag = hdiag.reshape(-1,1)
+    k = R_x.shape[1]
+    t = 1e-14
+    d = np.repeat(hdiag.reshape(-1,1), k, axis=1)
+
+    D_x = d - omega
+    D_x = np.where( abs(D_x) < t, np.sign(D_x)*t, D_x)
+    D_x_inv = D_x**-1
+
+    D_y = d + omega
+    D_y = np.where( abs(D_y) < t, np.sign(D_y)*t, D_y)
+    D_y_inv = D_y**-1
+
+    X_new = R_x*D_x_inv
+    Y_new = R_y*D_y_inv
+
+    return X_new, Y_new
+
+def TDDFT_subspace_eigen_solver(a, b, sigma, pi, k):
+    ''' [ a b ] x - [ σ   π] x  Ω = 0 '''
+    ''' [ b a ] y   [-π  -σ] y    = 0 '''
+
+    d = abs(np.diag(sigma))
+    d_mh = d**(-0.5)
+
+    s_m_p = d_mh.reshape(-1,1) * (sigma - pi) * d_mh.reshape(1,-1)
+
+    '''LU = d^−1/2 (σ − π) d^−1/2'''
+    ''' A = PLU '''
+    ''' if A is diagonally dominant, P is identity matrix (in fact not always) '''
+    P_permutation, L, U = scipy.linalg.lu(s_m_p)
+
+    L = np.dot(P_permutation, L)
+
+    L_inv = np.linalg.inv(L)
+    U_inv = np.linalg.inv(U)
+
+    ''' a ̃−b ̃= U^-T d^−1/2 (a−b) d^-1/2 U^-1 = GG^T '''
+    dambd =  d_mh.reshape(-1,1)*(a-b)*d_mh.reshape(1,-1)
+    GGT = np.linalg.multi_dot([U_inv.T, dambd, U_inv])
+
+    G = scipy.linalg.cholesky(GGT, lower=True)
+    G_inv = np.linalg.inv(G)
+
+    ''' M = G^T L^−1 d^−1/2 (a+b) d^−1/2 L^−T G '''
+    dapbd = d_mh.reshape(-1,1)*(a+b)*d_mh.reshape(1,-1)
+    M = np.linalg.multi_dot([G.T, L_inv, dapbd, L_inv.T, G])
+
+    omega2, Z = np.linalg.eigh(M)
+    omega = (omega2**0.5)[:k]
+    Z = Z[:,:k]
+
+    ''' It requires Z^T Z = 1/Ω '''
+    ''' x+y = d^−1/2 L^−T GZ Ω^-0.5 '''
+    ''' x−y = d^−1/2 U^−1 G^−T Z Ω^0.5 '''
+
+    x_p_y = d_mh.reshape(-1,1)\
+            *np.linalg.multi_dot([L_inv.T, G, Z])\
+            *(np.array(omega)**-0.5).reshape(1,-1)
+
+    x_m_y = d_mh.reshape(-1,1)\
+            *np.linalg.multi_dot([U_inv, G_inv.T, Z])\
+            *(np.array(omega)**0.5).reshape(1,-1)
+
+    x = (x_p_y + x_m_y)/2
+    y = x_p_y - x
+
+    return omega, x, y
+
+def sTDDFT_preconditioner_subspace_eigen_solver(a, b, sigma, pi, p, q, omega):
+    '''[ a b ] x - [ σ   π] x  Ω = p
+       [ b a ] y   [-π  -σ] y    = q
+       normalize the right hand side first
+    '''
+    pq = np.vstack((p,q))
+    pqnorm = np.linalg.norm(pq, axis=0, keepdims = True)
+
+    p /= pqnorm
+    q /= pqnorm
+
+    d = abs(np.diag(sigma))
+    d_mh = d**(-0.5)
+
+    '''LU = d^−1/2 (σ − π) d^−1/2
+       A = PLU
+       P is identity matrix only when A is diagonally dominant
+    '''
+    s_m_p = d_mh.reshape(-1,1) * (sigma - pi) * d_mh.reshape(1,-1)
+    P_permutation, L, U = scipy.linalg.lu(s_m_p)
+    L = np.dot(P_permutation, L)
+
+    L_inv = np.linalg.inv(L)
+    U_inv = np.linalg.inv(U)
+
+    p_p_q_tilde = np.dot(L_inv, d_mh.reshape(-1,1)*(p+q))
+    p_m_q_tilde = np.dot(U_inv.T, d_mh.reshape(-1,1)*(p-q))
+
+    ''' a ̃−b ̃= U^-T d^−1/2 (a−b) d^-1/2 U^-1 = GG^T'''
+    dambd = d_mh.reshape(-1,1)*(a-b)*d_mh.reshape(1,-1)
+    GGT = np.linalg.multi_dot([U_inv.T, dambd, U_inv])
+
+    '''G is lower triangle matrix'''
+    G = scipy.linalg.cholesky(GGT, lower=True)
+    G_inv = np.linalg.inv(G)
+
+    '''a ̃+ b ̃= L^−1 d^−1/2 (a+b) d^−1/2 L^−T
+       M = G^T (a ̃+ b ̃) G
+    '''
+    dapba = d_mh.reshape(-1,1)*(a+b)*d_mh.reshape(1,-1)
+    a_p_b_tilde = np.linalg.multi_dot([L_inv, dapba, L_inv.T])
+    M = np.linalg.multi_dot([G.T, a_p_b_tilde, G])
+    T = np.dot(G.T, p_p_q_tilde)
+    T += np.dot(G_inv, p_m_q_tilde * omega.reshape(1,-1))
+
+    Z = solve_AX_Xla_B(M, omega**2, T)
+
+    '''(x ̃+ y ̃) = GZ
+       x + y = d^-1/2 L^-T (x ̃+ y ̃)
+       x - y = d^-1/2 U^-1 (x ̃- y ̃)
+    '''
+    x_p_y_tilde = np.dot(G,Z)
+    x_p_y = d_mh.reshape(-1,1) * np.dot(L_inv.T, x_p_y_tilde)
+
+    x_m_y_tilde = (np.dot(a_p_b_tilde, x_p_y_tilde) - p_p_q_tilde)/omega
+    x_m_y = d_mh.reshape(-1,1) * np.dot(U_inv, x_m_y_tilde)
+
+    x = (x_p_y + x_m_y)/2
+    y = x_p_y - x
+    x *= pqnorm
+    y *= pqnorm
+    return x, y
+
+def sTDDFT_eigen_solver(k, tol=args.initial_TOL):
+    '''[ A' B' ] X - [1   0] Y Ω = 0
+       [ B' A' ] Y   [0  -1] X   = 0
+    '''
+    max = 30
+    sTDDFT_start = time.time()
+    print('setting initial guess')
+    print('sTDDFT Convergence tol = %.2e'%tol)
+    m = 0
+    new_m = min([k+8, 2*k, A_reduced_size])
+    V_holder = np.zeros((A_reduced_size, (max+1)*k))
+    W_holder = np.zeros_like(V_holder)
+
+    U1_holder = np.zeros_like(V_holder)
+    U2_holder = np.zeros_like(V_holder)
+
+    '''set up initial guess V W, transformed vectors U1 U2'''
+    V_holder, W_holder, new_m, energies, Xig, Yig = \
+    TDDFT_A_diag_initial_guess(V_holder, W_holder, new_m, hdiag = max_vir_hdiag)
+
+    subcost = 0
+    Pcost = 0
+    MVcost = 0
+    GScost = 0
+    subgencost = 0
+    for ii in range(max):
+        V = V_holder[:,:new_m]
+        W = W_holder[:,:new_m]
+        '''U1 = AV + BW
+           U2 = AW + BV'''
+
+        MV_start = time.time()
+        U1_holder[:, m:new_m], U2_holder[:, m:new_m] = \
+                                        sTDDFT_mv(V[:, m:new_m], W[:, m:new_m])
+        MV_end = time.time()
+        MVcost += MV_end - MV_start
+
+        U1 = U1_holder[:,:new_m]
+        U2 = U2_holder[:,:new_m]
+
+        subgenstart = time.time()
+        a = np.dot(V.T, U1)
+        a += np.dot(W.T, U2)
+
+        b = np.dot(V.T, U2)
+        b += np.dot(W.T, U1)
+
+        sigma = np.dot(V.T, V)
+        sigma -= np.dot(W.T, W)
+
+        pi = np.dot(V.T, W)
+        pi -= np.dot(W.T, V)
+
+
+        a = symmetrize(a)
+        b = symmetrize(b)
+        sigma = symmetrize(sigma)
+        pi = anti_symmetrize(pi)
+
+        subgenend = time.time()
+        subgencost += subgenend - subgenstart
+
+        '''solve the eigenvalue omega in the subspace'''
+        subcost_start = time.time()
+        omega, x, y = TDDFT_subspace_eigen_solver(a, b, sigma, pi, k)
+        subcost_end = time.time()
+        subcost += subcost_end - subcost_start
+
+        '''compute the residual
+           R_x = U1x + U2y - X_full*omega
+           R_y = U2x + U1y + Y_full*omega
+           X_full = Vx + Wy
+           Y_full = Wx + Vy
+        '''
+
+        X_full = np.dot(V,x)
+        X_full += np.dot(W,y)
+
+        Y_full = np.dot(W,x)
+        Y_full += np.dot(V,y)
+
+        R_x = np.dot(U1,x)
+        R_x += np.dot(U2,y)
+        R_x -= X_full*omega
+
+        R_y = np.dot(U2,x)
+        R_y += np.dot(U1,y)
+        R_y += Y_full*omega
+
+        residual = np.vstack((R_x, R_y))
+        r_norms = np.linalg.norm(residual, axis=0).tolist()
+        max_norm = np.max(r_norms)
+        if max_norm < tol or ii == (max -1):
+            break
+
+        index = [r_norms.index(i) for i in r_norms if i > tol]
+
+        '''preconditioning step'''
+        X_new, Y_new = TDDFT_A_diag_preconditioner(\
+                R_x[:,index], R_y[:,index], omega[index], hdiag = max_vir_hdiag)
+
+        '''GS and symmetric orthonormalization'''
+        m = new_m
+        GScost_start = time.time()
+        V_holder, W_holder, new_m = \
+                VW_Gram_Schmidt_fill_holder(V_holder, W_holder, m, X_new, Y_new)
+        GScost_end = time.time()
+        GScost += GScost_end - GScost_start
+
+        if new_m == m:
+            print('All new guesses kicked out during GS orthonormalization')
+            break
+
+    sTDDFT_end = time.time()
+
+    sTDDFT_cost = sTDDFT_end - sTDDFT_start
+
+    if ii == (max -1):
+        print('========= sTDDFT Failed Due to Iteration Limit=================')
+        print('sTDDFT diagonalization failed')
+        print('current residual norms', r_norms)
+    else:
+        print('sTDDFT diagonalization Converged' )
+
+    print('after ', ii+1, 'iterations; %.4f'%sTDDFT_cost, 'seconds')
+    print('final subspace', sigma.shape[0])
+    print('max_norm = ', '%.2e'%max_norm)
+    for enrty in ['MVcost','GScost','subgencost','subcost']:
+        cost = locals()[enrty]
+        print("{:<10} {:<5.4f}s {:<5.2%}".format(enrty, cost, cost/sTDDFT_cost))
+    X = np.zeros((n_occ,n_vir,k))
+    Y = np.zeros((n_occ,n_vir,k))
+
+    X[:,:max_vir,:] = X_full.reshape(n_occ,max_vir,-1)
+    Y[:,:max_vir,:] = Y_full.reshape(n_occ,max_vir,-1)
+
+    X = X.reshape(A_size, -1)
+    Y = Y.reshape(A_size, -1)
+
+    energies = omega*Hartree_to_eV
+    print('sTDDFT excitation energy:')
+    print(energies)
+    return energies, X, Y
+
+def sTDDFT_initial_guess(V_holder, W_holder, new_m):
+    energies, X_new_backup, Y_new_backup = sTDDFT_eigen_solver(new_m)
+    V_holder, W_holder, new_m = VW_Gram_Schmidt_fill_holder\
+                            (V_holder, W_holder, 0,  X_new_backup, Y_new_backup)
+    return V_holder, W_holder, new_m, energies, X_new_backup, Y_new_backup
+
+def sTDDFT_preconditioner(Rx, Ry, omega, tol=args.precond_TOL):
+    ''' [ A' B' ] - [1  0]X  Ω = P'''
+    ''' [ B' A' ]   [0 -1]Y    = Q'''
+    ''' P = Rx '''
+    ''' Q = Ry '''
+
+    print('sTDDFT_preconditioner conv', tol)
+    max = 30
+    sTDDFT_start = time.time()
+    k = len(omega)
+    m = 0
+
+    Rx = Rx.reshape(n_occ,n_vir,-1)
+    Ry = Ry.reshape(n_occ,n_vir,-1)
+
+    P = Rx[:,:max_vir,:].reshape(A_reduced_size,-1)
+    Q = Ry[:,:max_vir,:].reshape(A_reduced_size,-1)
+
+    initial_start = time.time()
+    V_holder = np.zeros((A_reduced_size, (max+1)*k))
+    W_holder = np.zeros_like(V_holder)
+
+    U1_holder = np.zeros_like(V_holder)
+    U2_holder = np.zeros_like(V_holder)
+
+    '''normalzie the RHS'''
+    PQ = np.vstack((P,Q))
+    pqnorm = np.linalg.norm(PQ, axis=0, keepdims = True)
+
+    P /= pqnorm
+    Q /= pqnorm
+
+    X_new, Y_new  = TDDFT_A_diag_preconditioner(\
+                        P, Q, omega, hdiag = max_vir_hdiag)
+    V_holder, W_holder, new_m = VW_Gram_Schmidt_fill_holder(\
+                                    V_holder, W_holder, 0,  X_new, Y_new)
+    initial_end = time.time()
+    initial_cost = initial_end - initial_start
+
+    subcost = 0
+    Pcost = 0
+    MVcost = 0
+    GScost = 0
+    subgencost = 0
+    for ii in range(max):
+        V = V_holder[:,:new_m]
+        W = W_holder[:,:new_m]
+
+        '''U1 = AV + BW
+           U2 = AW + BV'''
+
+        MV_start = time.time()
+        U1_holder[:, m:new_m], U2_holder[:, m:new_m] = \
+                                sTDDFT_mv(V[:, m:new_m], W[:, m:new_m])
+        MV_end = time.time()
+        MVcost += MV_end - MV_start
+
+        U1 = U1_holder[:,:new_m]
+        U2 = U2_holder[:,:new_m]
+
+        subgenstart = time.time()
+        a = np.dot(V.T, U1)
+        a += np.dot(W.T, U2)
+
+        b = np.dot(V.T, U2)
+        b += np.dot(W.T, U1)
+
+        sigma = np.dot(V.T, V)
+        sigma -= np.dot(W.T, W)
+
+        pi = np.dot(V.T, W)
+        pi -= np.dot(W.T, V)
+
+        '''p = VP + WQ
+           q = WP + VQ'''
+        p = np.dot(V.T, P)
+        p += np.dot(W.T, Q)
+
+        q = np.dot(W.T, P)
+        q += np.dot(V.T, Q)
+
+        subgenend = time.time()
+        subgencost += subgenend - subgenstart
+
+        a = symmetrize(a)
+        b = symmetrize(b)
+        sigma = symmetrize(sigma)
+        pi = anti_symmetrize(pi)
+
+        '''solve the x & y in the subspace'''
+        subcost_start = time.time()
+        x, y = sTDDFT_preconditioner_subspace_eigen_solver(\
+                                    a, b, sigma, pi, p, q, omega)
+        subcost_end = time.time()
+        subcost += subcost_end - subcost_start
+
+        '''compute the residual
+           R_x = U1x + U2y - X_full*omega - P
+           R_y = U2x + U1y + Y_full*omega - Q
+           X_full = Vx + Wy
+           Y_full = Wx + Vy
+        '''
+
+        X_full = np.dot(V,x)
+        X_full += np.dot(W,y)
+
+        Y_full = np.dot(W,x)
+        Y_full += np.dot(V,y)
+
+        R_x = np.dot(U1,x)
+        R_x += np.dot(U2,y)
+        R_x -= X_full*omega
+        R_x -= P
+
+        R_y = np.dot(U2,x)
+        R_y += np.dot(U1,y)
+        R_y += Y_full*omega
+        R_y -= Q
+
+        residual = np.vstack((R_x,R_y))
+        r_norms = np.linalg.norm(residual, axis=0).tolist()
+        max_norm = np.max(r_norms)
+        if max_norm < tol or ii == (max -1):
+            break
+        index = [r_norms.index(i) for i in r_norms if i > tol]
+
+        '''preconditioning step'''
+        Pstart = time.time()
+        X_new, Y_new = TDDFT_A_diag_preconditioner(R_x[:,index], R_y[:,index],\
+                                            omega[index], hdiag = max_vir_hdiag)
+        Pend = time.time()
+        Pcost += Pend - Pstart
+
+        '''GS and symmetric orthonormalization'''
+        m = new_m
+        GS_start = time.time()
+        V_holder, W_holder, new_m = VW_Gram_Schmidt_fill_holder(\
+                                            V_holder, W_holder, m, X_new, Y_new)
+        GS_end = time.time()
+        GScost += GS_end - GS_start
+
+        if new_m == m:
+            print('All new guesses kicked out during GS orthonormalization')
+            break
+
+    sTDDFT_end = time.time()
+
+    P_cost = sTDDFT_end - sTDDFT_start
+
+    if ii == (max -1):
+        print('========== sTDDFT_precond Failed Due to Iteration Limit========')
+        print('sTDDFT preconditioning failed')
+        print('current residual norms', r_norms)
+    else:
+        print('sTDDFT preconditioning Done')
+    print('after',ii+1,'steps; %.4f'%P_cost,'s')
+    print('final subspace', sigma.shape[0])
+    print('max_norm = ', '%.2e'%max_norm)
+    for enrty in ['initial_cost','MVcost','GScost','subgencost','subcost']:
+        cost = locals()[enrty]
+        print("{:<10} {:<5.4f}s  {:<5.2%}".format(enrty, cost, cost/P_cost))
+
+    X_full *=  pqnorm
+    Y_full *=  pqnorm
+
+    X = np.zeros((n_occ,n_vir,k))
+    Y = np.zeros((n_occ,n_vir,k))
+
+    X[:,:max_vir,:] = X_full.reshape(n_occ,max_vir,k)
+    Y[:,:max_vir,:] = Y_full.reshape(n_occ,max_vir,k)
+
+    if max_vir < n_vir:
+        P2 = Rx[:,max_vir:,:].reshape(n_occ*(n_vir-max_vir),-1)
+        Q2 = Ry[:,max_vir:,:].reshape(n_occ*(n_vir-max_vir),-1)
+
+        X2, Y2 = TDDFT_A_diag_preconditioner(\
+                        P2, Q2, omega, hdiag = delta_hdiag[:,max_vir:])
+        X[:,max_vir:,:] = X2.reshape(n_occ,n_vir-max_vir,-1)
+        Y[:,max_vir:,:] = Y2.reshape(n_occ,n_vir-max_vir,-1)
+
+    X = X.reshape(A_size,-1)
+    Y = Y.reshape(A_size,-1)
+
+    return X, Y
+
+def gen_TDDFT_lib():
+    i_lib={}
+    p_lib={}
+    i_lib['sTDDFT'] = sTDDFT_initial_guess
+    i_lib['Adiag']  = TDDFT_A_diag_initial_guess
+    p_lib['sTDDFT'] = sTDDFT_preconditioner
+    p_lib['Adiag']  = TDDFT_A_diag_preconditioner
+    return i_lib, p_lib
+
+def TDDFT_eigen_solver(init, prec, k=args.nstates, tol=args.conv_tolerance):
+    '''[ A B ] X - [1   0] Y Ω = 0
+       [ B A ] Y   [0  -1] X   = 0
+    '''
+    Davidson_dic = {}
+    Davidson_dic['iteration'] = []
+    iteration_list = Davidson_dic['iteration']
+
+    print('Initial guess:  ', init)
+    print('Preconditioner: ', prec)
+    print('A matrix size = ', A_size)
+
+    TDDFT_start = time.time()
+    max = args.max
+    m = 0
+
+    new_m = min([k + args.extrainitial, 2*k, A_size])
+
+    TDDFT_i_lib, TDDFT_p_lib = gen_TDDFT_lib()
+
+    initial_guess = TDDFT_i_lib[init]
+    new_guess_generator = TDDFT_p_lib[prec]
+
+    V_holder = np.zeros((A_size, (max+3)*k))
+    W_holder = np.zeros_like(V_holder)
+
+    U1_holder = np.zeros_like(V_holder)
+    U2_holder = np.zeros_like(V_holder)
+
+    init_start = time.time()
+    V_holder, W_holder, new_m, initial_energies, X_ig, Y_ig =\
+                                    initial_guess(V_holder, W_holder, new_m)
+    init_end = time.time()
+    init_time = init_end - init_start
+
+    initial_energies = initial_energies.tolist()[:k]
+
+    print('new_m =', new_m)
+    print('initial guess done')
+
+    Pcost = 0
+    for ii in range(max):
+        print('\niteration', ii)
+        show_memory_info('beginning of step '+ str(ii))
+
+        V = V_holder[:,:new_m]
+        W = W_holder[:,:new_m]
+        '''U1 = AV + BW
+           U2 = AW + BV'''
+        U1_holder[:, m:new_m], U2_holder[:, m:new_m] =\
+                            TDDFT_matrix_vector(V[:, m:new_m], W[:, m:new_m])
+
+        U1 = U1_holder[:,:new_m]
+        U2 = U2_holder[:,:new_m]
+
+        a = np.dot(V.T, U1)
+        a += np.dot(W.T, U2)
+
+        b = np.dot(V.T, U2)
+        b += np.dot(W.T, U1)
+
+        sigma = np.dot(V.T, V)
+        sigma -= np.dot(W.T, W)
+
+        pi = np.dot(V.T, W)
+        pi -= np.dot(W.T, V)
+
+        a = symmetrize(a)
+        b = symmetrize(b)
+        sigma = symmetrize(sigma)
+        pi = anti_symmetrize(pi)
+
+        print('subspace size: %s' %sigma.shape[0])
+
+        omega, x, y = TDDFT_subspace_eigen_solver(a, b, sigma, pi, k)
+
+        '''compute the residual
+           R_x = U1x + U2y - X_full*omega
+           R_y = U2x + U1y + Y_full*omega
+           X_full = Vx + Wy
+           Y_full = Wx + Vy
+        '''
+
+        X_full = np.dot(V,x)
+        X_full += np.dot(W,y)
+
+        Y_full = np.dot(W,x)
+        Y_full += np.dot(V,y)
+
+        R_x = np.dot(U1,x)
+        R_x += np.dot(U2,y)
+        R_x -= X_full*omega
+
+        R_y = np.dot(U2,x)
+        R_y += np.dot(U1,y)
+        R_y += Y_full*omega
+
+        residual = np.vstack((R_x, R_y))
+        r_norms = np.linalg.norm(residual, axis=0).tolist()
+
+        iteration_list.append({})
+        current_dic = iteration_list[ii]
+        current_dic['residual norms'] = r_norms
+        iteration_list[ii] = current_dic
+
+        max_norm = np.max(r_norms)
+        print('Maximum residual norm: ', '%.2e'%max_norm)
+        if max_norm < tol or ii == (max -1):
+            print('TDDFT precedure Done\n')
+            break
+        index = [r_norms.index(i) for i in r_norms if i > tol]
+        index = [i for i,R in enumerate(r_norms) if R > tol]
+        print('unconverged states', index)
+
+        P_start = time.time()
+        X_new, Y_new = new_guess_generator(\
+                            R_x[:,index], R_y[:,index], omega[index])
+        P_end = time.time()
+        Pcost += P_end - P_start
+
+        m = new_m
+        V_holder, W_holder, new_m = VW_Gram_Schmidt_fill_holder(\
+                                        V_holder, W_holder, m, X_new, Y_new)
+        print('m & new_m', m, new_m)
+        if new_m == m:
+            print('All new guesses kicked out during GS orthonormalization')
+            break
+
+    omega *= Hartree_to_eV
+
+    difference = np.mean((np.array(initial_energies) - np.array(omega))**2)
+    difference = float(difference)
+
+    overlap = float(np.linalg.norm(np.dot(X_ig.T, X_full)) \
+                    + np.linalg.norm(np.dot(Y_ig.T, Y_full)))
+
+    TDDFT_end = time.time()
+    TDDFT_cost = TDDFT_end - TDDFT_start
+
+    Davidson_dic = fill_dictionary(Davidson_dic, init=init, prec=prec, k=k,\
+            icost=init_time, pcost=Pcost, wall_time=TDDFT_cost, \
+            energies=omega.tolist(), N_itr=ii+1, N_mv=np.shape(sigma)[0], \
+            initial_energies=initial_energies, difference=difference,\
+            overlap=overlap)
+    if ii == (max -1):
+        print('===== TDDFT Failed Due to Iteration Limit============')
+        print('current residual norms', r_norms)
+        print('max_norm = ', np.max(r_norms))
+    else:
+        print('============= TDDFT Calculation Done ==============')
+
+    print('after', ii+1,'iterations','%.2f'%TDDFT_cost,'s')
+    print('Final subspace ', sigma.shape[0])
+    print('preconditioning cost', '%.4f'%Pcost, '%.2f'%(Pcost/TDDFT_cost),"%")
+    print('max_norm = ', '%.2e'%max_norm)
+
+    show_memory_info('Total TDDFT')
+    return omega, X_full, Y_full, Davidson_dic
+
+def gen_dynpol_lib():
+    i_lib={}
+    p_lib={}
+    i_lib['sTDDFT'] = sTDDFT_preconditioner
+    i_lib['Adiag']  = TDDFT_A_diag_preconditioner
+    p_lib['sTDDFT'] = sTDDFT_preconditioner
+    p_lib['Adiag']  = TDDFT_A_diag_preconditioner
+    return i_lib, p_lib
+
+def gen_P():
+    mo_coeff = mf.mo_coeff
+    mo_occ = mf.mo_occ
+    occidx = mo_occ > 0
+    orbo = mo_coeff[:, occidx]
+    orbv = mo_coeff[:,~occidx]
+    int_r= mol.intor_symmetric('int1e_r')
+    P = lib.einsum("xpq,pi,qa->iax", int_r, orbo, orbv.conj())
+    return P
+
+def dynamic_polarizability(init, prec):
+    ''' [ A B ] - [1  0]X  w = -P'''
+    ''' [ B A ]   [0 -1]Y    = -Q'''
+    dp_start = time.time()
+
+    dynpol_i_lib, dynpol_p_lib = gen_dynpol_lib()
+    initial_guess = dynpol_i_lib[init]
+    new_guess_generator = dynpol_p_lib[prec]
+
+    print('Initial guess:  ', init)
+    print('Preconditioner: ', prec)
+    print('A matrix size = ', A_size)
+
+    Davidson_dic = {}
+    Davidson_dic['iteration'] = []
+    iteration_list = Davidson_dic['iteration']
+
+    k = len(args.dynpol_omega)
+    omega =  np.zeros([3*k])
+    for jj in range(k):
+        '''if have 3 ω, [ω1 ω1 ω1, ω2 ω2 ω2, ω3 ω3 ω3]
+           convert nm to Hartree'''
+        omega[3*jj:3*(jj+1)] = 45.56337117/args.dynpol_omega[jj]
+
+    P = gen_P()
+    P = P.reshape(-1,3)
+
+    P_origin = np.zeros_like(P)
+    P_origin[:,:] = P[:,:]
+
+    pnorm = np.linalg.norm(P, axis=0, keepdims = True)
+    pqnorm = pnorm * (2**0.5)
+    print('pqnorm', pqnorm)
+    P /= pqnorm
+
+    P = np.tile(P,k)
+    Q = P
+
+    max = args.max
+    tol = args.conv_tolerance
+    m = 0
+    V_holder = np.zeros((A_size, (max+1)*k*3))
+    W_holder = np.zeros_like(V_holder)
+
+    U1_holder = np.zeros_like(V_holder)
+    U2_holder = np.zeros_like(V_holder)
+
+    init_start = time.time()
+    X_ig, Y_ig = initial_guess(-P, -Q, omega, tol=args.initial_TOL)
+
+    alpha_omega_ig = []
+    X_p_Y = X_ig + Y_ig
+    X_p_Y *= np.tile(pqnorm,k)
+    for jj in range(k):
+        '''*-1 from the definition of dipole moment. *2 for double occupancy'''
+        X_p_Y_tmp = X_p_Y[:,3*jj:3*(jj+1)]
+        alpha_omega_ig.append(np.dot(P_origin.T, X_p_Y_tmp)*-2)
+    print('initial guess of tensor alpha')
+    for i in range(k):
+        print(args.dynpol_omega[i],'nm')
+        print(alpha_omega_ig[i])
+
+    V_holder, W_holder, new_m = VW_Gram_Schmidt_fill_holder(\
+                                            V_holder, W_holder, 0, X_ig, Y_ig)
+    init_end = time.time()
+    initial_cost = init_end - init_start
+    subcost = 0
+    Pcost = 0
+    MVcost = 0
+    GScost = 0
+    subgencost = 0
+    for ii in range(max):
+        print('Iteration', ii)
+
+        V = V_holder[:,:new_m]
+        W = W_holder[:,:new_m]
+
+        MV_start = time.time()
+        U1_holder[:, m:new_m], U2_holder[:, m:new_m] = TDDFT_matrix_vector(\
+                                                V[:, m:new_m], W[:, m:new_m])
+        MV_end = time.time()
+        MVcost += MV_end - MV_start
+
+        U1 = U1_holder[:,:new_m]
+        U2 = U2_holder[:,:new_m]
+
+        subgenstart = time.time()
+        a = np.dot(V.T, U1)
+        a += np.dot(W.T, U2)
+
+        b = np.dot(V.T, U2)
+        b += np.dot(W.T, U1)
+
+        sigma = np.dot(V.T, V)
+        sigma -= np.dot(W.T, W)
+
+        pi = np.dot(V.T, W)
+        pi -= np.dot(W.T, V)
+
+        '''p = VP + WQ
+           q = WP + VQ'''
+        p = np.dot(V.T, P)
+        p += np.dot(W.T, Q)
+
+        q = np.dot(W.T, P)
+        q += np.dot(V.T, Q)
+
+        subgenend = time.time()
+        subgencost += subgenend - subgenstart
+
+        print('sigma.shape', sigma.shape)
+
+        subcost_start = time.time()
+        x, y = sTDDFT_preconditioner_subspace_eigen_solver(\
+                    a, b, sigma, pi, -p, -q, omega)
+        subcost_end = time.time()
+        subcost += subcost_end - subcost_start
+
+        '''compute the residual
+           R_x = U1x + U2y - X_full*omega + P
+           R_y = U2x + U1y + Y_full*omega + Q
+           X_full = Vx + Wy
+           Y_full = Wx + Vy
+        '''
+        X_full = np.dot(V,x)
+        X_full += np.dot(W,y)
+
+        Y_full = np.dot(W,x)
+        Y_full += np.dot(V,y)
+
+        R_x = np.dot(U1,x)
+        R_x += np.dot(U2,y)
+        R_x -= X_full*omega
+        R_x += P
+
+        R_y = np.dot(U2,x)
+        R_y += np.dot(U1,y)
+        R_y += Y_full*omega
+        R_y += Q
+
+        residual = np.vstack((R_x,R_y))
+        r_norms = np.linalg.norm(residual, axis=0).tolist()
+        print('maximum residual norm: ', '%.3e'%np.max(r_norms))
+
+        iteration_list.append({})
+        current_dic = iteration_list[ii]
+        current_dic['residual norms'] = r_norms
+        iteration_list[ii] = current_dic
+
+        if np.max(r_norms) < tol or ii == (max -1):
+            break
+        index = [r_norms.index(i) for i in r_norms if i > tol]
+
+        Pstart = time.time()
+        X_new, Y_new = new_guess_generator(R_x[:,index], \
+                            R_y[:,index], omega[index], tol=args.precond_TOL)
+        Pend = time.time()
+        Pcost += Pend - Pstart
+
+        m = new_m
+        GS_start = time.time()
+        V_holder, W_holder, new_m = VW_Gram_Schmidt_fill_holder(\
+                                        V_holder, W_holder, m, X_new, Y_new)
+        GS_end = time.time()
+        GScost += GS_end - GS_start
+
+        if new_m == m:
+            print('All new guesses kicked out during GS orthonormalization')
+            break
+
+    dp_end = time.time()
+    dp_cost = dp_end - dp_start
+
+    if ii == (max -1):
+        print('======= Dynamic polarizability Failed Due to Iteration Limit=====')
+        print('dynamic polarizability failed after ', ii+1, 'iterations  ', round(dp_cost, 4), 'seconds')
+        print('current residual norms', r_norms)
+        print('max_norm = ', np.max(r_norms))
+    else:
+        print('Dynamic polarizability Converged after ', ii+1, 'iterations  ', round(dp_cost, 4), 'seconds')
+        print('initial_cost', round(initial_cost,4), round(initial_cost/dp_cost * 100,2),'%')
+        print('Pcost', round(Pcost,4), round(Pcost/dp_cost * 100,2),'%')
+        print('MVcost', round(MVcost,4), round(MVcost/dp_cost * 100,2),'%')
+        print('GScost', round(GScost,4), round(GScost/dp_cost * 100,2),'%')
+        print('subcost', round(subcost,4), round(subcost/dp_cost * 100,2),'%')
+        print('subgencost', round(subgencost,4), round(subgencost/dp_cost * 100,2),'%')
+
+    print('Wavelength we look at', args.dynpol_omega)
+    alpha_omega = []
+
+    overlap = float(np.linalg.norm(np.dot(X_ig.T, X_full))\
+                    + np.linalg.norm(np.dot(Y_ig.T, Y_full)))
+
+    X_p_Y = X_full + Y_full
+
+    X_p_Y *= np.tile(pqnorm,k)
+
+    for jj in range(k):
+        X_p_Y_tmp = X_p_Y[:,3*jj:3*(jj+1)]
+        alpha_omega.append(np.dot(P_origin.T, X_p_Y_tmp)*-2)
+
+    difference = 0
+    for i in range(k):
+        difference += np.mean((alpha_omega_ig[i] - alpha_omega[i])**2)
+
+    difference = float(difference)
+
+    show_memory_info('Total Dynamic polarizability')
+    Davidson_dic = fill_dictionary(Davidson_dic, init=init, prec=prec, k=3*k,\
+            icost=initial_cost, pcost=Pcost, wall_time=dp_cost, \
+            energies=omega.tolist(), N_itr=ii+1, N_mv=np.shape(sigma)[0], \
+            difference=difference, overlap=overlap,\
+            tensor_alpha=[i.tolist() for i in alpha_omega],\
+            initial_tensor_alpha=[i.tolist() for i in alpha_omega_ig])
+    return alpha_omega, Davidson_dic
+
+def stapol_A_diag_initprec(P, hdiag=hdiag, tol=None):
+    d = hdiag.reshape(-1,1)
+    P = -P/d
+    # P /= -d
+    return P
+
+def stapol_sTDDFT_initprec(Pr, tol=args.initial_TOL):
+    '''(A* + B*)X = -P
+       residual = (A* + B*)X + P
+       X_ig = -P/d
+       X_new = residual/D
+    '''
+    ssp_start = time.time()
+    max = 30
+    m = 0
+    npvec = Pr.shape[1]
+
+    P = Pr.reshape(n_occ,n_vir,-1)[:,:max_vir,:]
+    P = P.reshape(A_reduced_size,-1)
+    pnorm = np.linalg.norm(P, axis=0, keepdims = True)
+    P /= pnorm
+
+    V_holder = np.zeros((A_reduced_size, (max+1)*npvec))
+    U_holder = np.zeros_like(V_holder)
+
+    '''setting up initial guess'''
+    init_start = time.time()
+    X_ig = stapol_A_diag_initprec(P, hdiag=max_vir_hdiag)
+    V_holder, new_m = Gram_Schmidt_fill_holder(V_holder, m, X_ig)
+    init_end = time.time()
+    initial_cost = init_end - init_start
+
+    subcost = 0
+    Pcost = 0
+    MVcost = 0
+    GScost = 0
+    subgencost = 0
+    for ii in range(max):
+        '''creating the subspace'''
+        MV_start = time.time()
+        '''U = AX + BX = (A+B)X'''
+        U_holder[:, m:new_m] = sTDDFT_stapol_mv(V_holder[:,m:new_m])
+        MV_end = time.time()
+        MVcost += MV_end - MV_start
+
+        V = V_holder[:,:new_m]
+        U = U_holder[:,:new_m]
+
+        subgenstart = time.time()
+        p = np.dot(V.T, P)
+        a_p_b = np.dot(V.T,U)
+        a_p_b = symmetrize(a_p_b)
+
+        subgenend = time.time()
+        subgencost += subgenend - subgenstart
+
+        '''solve the x in the subspace'''
+        subcost_start = time.time()
+        x = np.linalg.solve(a_p_b, -p)
+        subcost_end = time.time()
+        subcost += subcost_end - subcost_start
+
+        '''compute the residual
+           R = Ux + P'''
+        Ux = np.dot(U,x)
+        residual = Ux + P
+
+        r_norms = np.linalg.norm(residual, axis=0).tolist()
+        index = [r_norms.index(i) for i in r_norms if i > tol]
+        if np.max(r_norms) < tol or ii == (max -1):
+            print('Static polarizability procedure aborted')
+            break
+
+        Pstart = time.time()
+        X_new = stapol_A_diag_initprec(-residual[:,index], hdiag=max_vir_hdiag)
+        Pend = time.time()
+        Pcost += Pend - Pstart
+
+        '''GS and symmetric orthonormalization'''
+        m = new_m
+        GS_start = time.time()
+        V_holder, new_m = Gram_Schmidt_fill_holder(V_holder, m, X_new)
+        GS_end = time.time()
+        GScost += GS_end - GS_start
+        if new_m == m:
+            print('All new guesses kicked out during GS orthonormalization')
+            break
+    X_full = np.dot(V,x)
+    '''alpha = np.dot(X_full.T, P)*-4'''
+
+    ssp_end = time.time()
+    ssp_cost = ssp_end - ssp_start
+
+    if ii == (max -1):
+        print('== sTDDFT Stapol precond Failed Due to Iteration Limit======')
+        print('current residual norms', r_norms)
+    else:
+        print('sTDDFT Stapol precond Converged' )
+    print('after', ii+1, 'steps', '%.4f'%ssp_cost,'s')
+    print('conv threhsold = %.2e'%tol)
+    print('final subspace:', a_p_b.shape[0])
+    print('max_norm = ', '%.2e'%np.max(r_norms))
+    for enrty in ['initial_cost','MVcost','GScost','subgencost','subcost']:
+        cost = locals()[enrty]
+        print("{:<10} {:<5.4f}s  {:<5.2%}".format(enrty, cost, cost/ssp_cost))
+
+    X_full *= pnorm
+
+    U = np.zeros((n_occ,n_vir,npvec))
+    U[:,:max_vir,:] = X_full.reshape(n_occ,max_vir,-1)[:,:,:]
+
+    if max_vir < n_vir:
+        ''' DX2 = -P2'''
+        P2 = Pr.reshape(n_occ,n_vir,-1)[:,max_vir:,:]
+        P2 = P2.reshape(n_occ*(n_vir-max_vir),-1)
+        D2 = hdiag.reshape(n_occ,n_vir,-1)[:,max_vir:,:]
+        D2 = D2.reshape(n_occ*(n_vir-max_vir),-1)
+        X2 = (-P2/D2).reshape(n_occ,n_vir-max_vir,-1)
+        U[:,max_vir:,:] = X2
+    U = U.reshape(A_size, npvec)
+    return U
+
+def gen_stapol_lib():
+    i_lib={}
+    p_lib={}
+    i_lib['sTDDFT'] = stapol_sTDDFT_initprec
+    i_lib['Adiag']  = stapol_A_diag_initprec
+    p_lib['sTDDFT'] = stapol_sTDDFT_initprec
+    p_lib['Adiag']  = stapol_A_diag_initprec
+    return i_lib, p_lib
+
+def static_polarizability(init, prec):
+    '''(A+B)X = -P
+       residual = (A+B)X + P
+       X_new = (residual - P)/D'''
+    print('initial guess', init)
+    print('preconditioner', prec)
+    sp_start = time.time()
+
+    P = gen_P()
+    P = P.reshape(-1,3)
+
+    P_origin = np.zeros_like(P)
+    P_origin[:,:] = P[:,:]
+
+    pnorm = np.linalg.norm(P, axis=0, keepdims = True)
+    P /= pnorm
+
+    Davidson_dic = {}
+    Davidson_dic['iteration'] = []
+    iteration_list = Davidson_dic['iteration']
+
+    stapol_i_lib, stapol_p_lib = gen_stapol_lib()
+    initial_guess = stapol_i_lib[init]
+    new_guess_generator = stapol_p_lib[prec]
+
+    max = args.max
+    tol = args.conv_tolerance
+    m = 0
+
+    V_holder = np.zeros((A_size, (max+1)*3))
+    U_holder = np.zeros_like(V_holder)
+
+    init_start = time.time()
+    X_ig = initial_guess(P, tol=args.initial_TOL)
+
+    alpha_init = np.dot((X_ig*pnorm).T, P_origin)*-4
+    print('alpha tensor of initial guess:')
+    print(alpha_init)
+
+    V_holder, new_m = Gram_Schmidt_fill_holder(V_holder, 0, X_ig)
+    print('new_m =', new_m)
+    init_end = time.time()
+    initial_cost = init_end - init_start
+
+    Pcost = 0
+    MVcost = 0
+    GScost = 0
+    subgencost = 0
+    for ii in range(max):
+        print('\nIteration', ii)
+        MV_start = time.time()
+        U_holder[:, m:new_m] = \
+                    static_polarizability_matrix_vector(V_holder[:,m:new_m])
+        MV_end = time.time()
+        MVcost += MV_end - MV_start
+
+        V = V_holder[:,:new_m]
+        U = U_holder[:,:new_m]
+
+        subgenstart = time.time()
+        p = np.dot(V.T, P)
+        a_p_b = np.dot(V.T,U)
+        a_p_b = symmetrize(a_p_b)
+        subgenend = time.time()
+
+        '''solve the x in the subspace'''
+        x = np.linalg.solve(a_p_b, -p)
+
+        '''compute the residual
+           R = Ux + P'''
+        Ux = np.dot(U,x)
+        residual = Ux + P
+
+        r_norms = np.linalg.norm(residual, axis=0).tolist()
+
+        iteration_list.append({})
+        current_dic = iteration_list[ii]
+        current_dic['residual norms'] = r_norms
+        iteration_list[ii] = current_dic
+
+        '''index for unconverged residuals'''
+        index = [r_norms.index(i) for i in r_norms if i > tol]
+        max_norm = np.max(r_norms)
+        print('max_norm = %.2e'%max_norm)
+        if max_norm < tol or ii == (max -1):
+            print('static polarizability precodure aborted\n')
+            break
+
+        '''preconditioning step'''
+        Pstart = time.time()
+
+        X_new = new_guess_generator(-residual[:,index], tol=args.precond_TOL)
+        Pend = time.time()
+        Pcost += Pend - Pstart
+
+        '''GS and symmetric orthonormalization'''
+        m = new_m
+        GS_start = time.time()
+        V_holder, new_m = Gram_Schmidt_fill_holder(V_holder, m, X_new)
+        GS_end = time.time()
+        GScost += GS_end - GS_start
+        if new_m == m:
+            print('All new guesses kicked out during GS orthonormalization')
+            break
+
+    X_full = np.dot(V,x)
+    overlap = float(np.linalg.norm(np.dot(X_ig.T, X_full)))
+
+    X_full *= pnorm
+
+    tensor_alpha = np.dot(X_full.T, P_origin)*-4
+    sp_end = time.time()
+    sp_cost = sp_end - sp_start
+
+    if ii == (max -1):
+        print('==== Static polarizability Failed Due to Iteration Limit ======')
+        print('current residual norms', r_norms)
+        print('max_norm = ', max_norm)
+    else:
+        print('Static polarizability Converged')
+
+    print('after', ii+1, 'steps; %.4f'%sp_cost,'s')
+    print('final subspace', a_p_b.shape)
+    print('max_norm = ', '%.2e'%np.max(r_norms))
+    for enrty in ['initial_cost','MVcost','Pcost']:
+        cost = locals()[enrty]
+        print("{:<10} {:<5.4f}s  {:<5.2%}".format(enrty, cost, cost/sp_cost))
+
+    difference = np.mean((alpha_init - tensor_alpha)**2)
+    difference = float(difference)
+
+    sp_end = time.time()
+    spcost = sp_end - sp_start
+    Davidson_dic = fill_dictionary(Davidson_dic, init=init, prec=prec, k=3,\
+            icost=initial_cost, pcost=Pcost, wall_time=sp_cost, \
+            N_itr=ii+1, N_mv=np.shape(a_p_b)[0], difference=difference,\
+            overlap=overlap, tensor_alpha=[i.tolist() for i in tensor_alpha],\
+            initial_tensor_alpha=[i.tolist() for i in alpha_init])
+    return tensor_alpha, Davidson_dic
+
+def gen_calc():
+    name_dic={}
+    name_dic['TDA'] = args.TDA
+    name_dic['TDDFT'] = args.TDDFT
+    name_dic['dynpol'] = args.dynpol
+    name_dic['stapol'] = args.stapol
+    name_dic['sTDA'] = args.sTDA
+    name_dic['sTDDFT'] = args.sTDDFT
+    name_dic['Truncate_test'] = args.Truncate_test
+    name_dic['PySCF_TDDFT'] = args.pytd
+    for calc in ['TDA','TDDFT','dynpol','stapol',\
+                        'sTDA','sTDDFT','Truncate_test','PySCF_TDDFT']:
+        if name_dic[calc] == True:
+            print(calc)
+            return calc
+
+def dump_yaml(Davidson_dic, calc, init, prec):
+    curpath = os.getcwd()
+    yamlpath = os.path.join(\
+                   curpath,basename+'_'+calc+'_i_'+init+'_p_'+prec+'.yaml')
+    with open(yamlpath, "w", encoding="utf-8") as f:
+        yaml.dump(Davidson_dic, f)
+
+if __name__ == "__main__":
+    calc = gen_calc()
+    TDA_combo = [            # option
+    ['sTDA','sTDA'],         # 0
+    ['Adiag','Adiag'],       # 1
+    ['Adiag','sTDA'],        # 2
+    ['sTDA','Adiag'],        # 3
+    ['sTDA','Jacobi'],       # 4
+    ['Adiag','Jacobi'],      # 5
+    ['Adiag','new_ES'],      # 6
+    ['sTDA','new_ES']]       # 7
+    TDDFT_combo = [          # option
+    ['sTDDFT','sTDDFT'],     # 0
+    ['Adiag','Adiag'],       # 1
+    ['Adiag','sTDDFT'],      # 2
+    ['sTDDFT','Adiag']]      # 3
+    print('|-------- In-house Developed {0} Starts ---------|'.format(calc))
+    print('Residual conv =', args.conv_tolerance)
+    if args.TDA == True:
+        for option in args.ip_options:
+            init, prec = TDA_combo[option]
+            print('\nNumber of excited states =', args.nstates)
+            Excitation_energies, eigenkets, Davidson_dic = Davidson(init,prec)
+            print('Excited State energies (eV) =\n',Excitation_energies)
+            dump_yaml(Davidson_dic, calc, init, prec)
+    if args.TDDFT == True:
+        for option in args.ip_options:
+            init, prec = TDDFT_combo[option]
+            print('\nNumber of excited states =', args.nstates)
+            Excitation_energies,X,Y,Davidson_dic = TDDFT_eigen_solver(init,prec)
+            print('Excited State energies (eV) =\n',Excitation_energies)
+            dump_yaml(Davidson_dic, calc, init, prec)
+    if args.dynpol == True:
+        for option in args.ip_options:
+            init,prec = TDDFT_combo[option]
+            print('\nPerturbation wavelength omega (nm) =', args.dynpol_omega)
+            alpha_omega, Davidson_dic = dynamic_polarizability(init,prec)
+            print('Dynamic polarizability tensor alpha')
+            dump_yaml(Davidson_dic, calc, init, prec)
+            for i in range(len(args.dynpol_omega)):
+                print(args.dynpol_omega[i],'nm')
+                print(alpha_omega[i])
+    if args.stapol == True:
+        for option in args.ip_options:
+            init,prec = TDDFT_combo[option]
+            print('\n')
+            tensor_alpha, Davidson_dic = static_polarizability(init,prec)
+            print('Static polarizability tensor alpha')
+            print(tensor_alpha)
+            dump_yaml(Davidson_dic, calc, init, prec)
+    if args.sTDA == True:
+        X, energies = sTDA_eigen_solver(k=args.nstates, tol=args.conv_tolerance)
+    if args.sTDDFT == True:
+        energies,X,Y = sTDDFT_eigen_solver(k=args.nstates,tol=args.conv_tolerance)
+    if args.Truncate_test == True:
+        n_states= args.nstates
+        X = np.random.rand(A_size,n_state)
+        Y = np.random.rand(A_size,n_state)
+        print('n_vir = ', n_vir)
+        print('A_size =', A_size)
+        print('n_states =', n_states)
+        print("{:<8} {:<8} {:<8} {:<8}".format(\
+                'eV', 'max_vir', 'sTDA_t', 'sTDDFT_t'))
+        for vir_trunc in [40, 50, 60, 70, 10000000]:
+            del max_vir, sTDA_mv, sTDDFT_mv
+            max_vir = gen_maxvir(tol_eV = vir_trunc)
+            q_ij, q_ab, q_ia , GK_q_jb, GJ_q_ab = gen_QJK(max_vir=max_vir)
+            # print('q_ab', q_ab.shape, 'GK_q_jb', GK_q_jb.shape)
+            iajb_fly, ijab_fly, ibja_fly, delta_fly = gen_iajb_ijab_ibja_delta_fly(\
+                                            max_vir=max_vir, \
+                                            q_ij = q_ij, \
+                                            q_ab = q_ab, \
+                                            q_ia = q_ia , \
+                                            GK_q_jb = GK_q_jb, \
+                                            GJ_q_ab = GJ_q_ab)
+
+            sTDA_mv, sTDDFT_mv, sTDDFT_stapol_mv = gen_sTDA_sTDDFT_stapol_fly(\
+                                            max_vir=max_vir, \
+                                            iajb_fly = iajb_fly, \
+                                            ijab_fly = ijab_fly, \
+                                            ibja_fly = ibja_fly, \
+                                            delta_fly = delta_fly)
+
+            sTDA_start = time.time()
+            sTDA_X = sTDA_mv(X)
+            sTDA_end = time.time()
+            sTDA_mv_time = sTDA_end - sTDA_start
+
+            sTDDFT_start = time.time()
+            sTDDFT_X, sTDDFT_Y = sTDDFT_mv(X, Y)
+            sTDDFT_end = time.time()
+            sTDDFT_mv_time = sTDDFT_end - sTDDFT_start
+
+            print("{:<8} {:<8} {:<8.4f} {:<8.4f}".format(\
+                    vir_trunc, max_vir, sTDA_mv_time, sTDDFT_mv_time))
+    if args.pytd == True:
+        TD.nstates = args.nstates
+        TD.conv_tol = args.conv_tolerance
+        TD.kernel()
+        end = time.time()
+    if args.verbose > 3:
+        for key in vars(args):
+            print(key,'=', vars(args)[key])
+    print('|-------- In-house Developed {0} Ends ----------|'.format(calc))
+#INFO: ******************** input file end ********************
+
+
+System: uname_result(system='Linux', node='classct014', release='3.10.0-1127.el7.x86_64', version='#1 SMP Tue Feb 18 16:39:12 EST 2020', machine='x86_64', processor='x86_64')  Threads 16
+Python 3.7.0 (default, Aug 23 2018, 14:24:33) 
+[GCC 6.3.0]
+numpy 1.18.1  scipy 1.4.1
+Date: Fri Jul  9 16:54:01 2021
+PySCF version 1.7.4
+PySCF path  /home/zzz6/.local/lib/python3.7/site-packages/pyscf
+
+[CONFIG] conf_file None
+[INPUT] verbose = 5
+[INPUT] max_memory = 50000 
+[INPUT] num. atoms = 49
+[INPUT] num. electrons = 156
+[INPUT] charge = 0
+[INPUT] spin (= nelec alpha-beta = 2S) = 0
+[INPUT] symmetry False subgroup None
+[INPUT] Mole.unit = angstrom
+[INPUT]  1 O      8.596812826086  -1.341186651948   0.767208986425 AA   16.245621785450  -2.534475454104   1.449814864649 Bohr
+[INPUT]  2 C     -4.531485676017   0.840005027898   0.395852991007 AA   -8.563266865061   1.587379445985   0.748053738593 Bohr
+[INPUT]  3 C     -5.912817862972   0.142991912416   0.387405131746 AA  -11.173606385453   0.270215552494   0.732089598251 Bohr
+[INPUT]  4 C     -5.837786321533  -1.307369641498   0.859703945960 AA  -11.031817321429  -2.470570566001   1.624605006073 Bohr
+[INPUT]  5 C     -3.434359710528  -0.084393807286  -0.184953677175 AA   -6.489999266139  -0.159481182380  -0.349511795593 Bohr
+[INPUT]  6 C     -4.960654586988  -2.100545426181  -0.107838319794 AA   -9.374278567975  -3.969455567690  -0.203784890145 Bohr
+[INPUT]  7 C     -3.660430676832  -1.408002812848  -0.459081878837 AA   -6.917211477169  -2.660739698901  -0.867539019754 Bohr
+[INPUT]  8 C     -4.140002340821   1.230573978239   1.841836357235 AA   -7.823470579210   2.325447794887   3.480566281441 Bohr
+[INPUT]  9 C     -4.664316050771   2.132010269769  -0.446870321523 AA   -8.814279894370   4.028915504623  -0.844462520874 Bohr
+[INPUT] 10 C     -2.139350656840   0.564611082077  -0.412983948152 AA   -4.042786825837   1.066960312020  -0.780426555848 Bohr
+[INPUT] 11 C     -2.681954853441  -2.307379106930  -1.177749007820 AA   -5.068160151452  -4.360314577642  -2.225623068258 Bohr
+[INPUT] 12 C     -0.905941449907   0.028898972479  -0.164741820756 AA   -1.711981225216   0.054611143268  -0.311316922490 Bohr
+[INPUT] 13 C      0.362667685428   0.693790348467  -0.386322790198 AA    0.685342599688   1.311073746469  -0.730044269152 Bohr
+[INPUT] 14 C      0.360367355952   2.088235692381  -0.964857742833 AA    0.680995606983   3.946193542142  -1.823316883121 Bohr
+[INPUT] 15 C      1.521572780110   0.015564862642  -0.057114906586 AA    2.875355833000   0.029413327559  -0.107931531077 Bohr
+[INPUT] 16 C      2.868174400806   0.479493552484  -0.197633397354 AA    5.420064095012   0.906111492690  -0.373472994066 Bohr
+[INPUT] 17 C      3.967968580558  -0.266376618278   0.153927827599 AA    7.498373888134  -0.503378854533   0.290881437111 Bohr
+[INPUT] 18 C      5.348180559351   0.150730657038   0.032133978621 AA   10.106596521897   0.284839660377   0.060724418885 Bohr
+[INPUT] 19 C      5.637973092713   1.526596953767  -0.527259654955 AA   10.654225042894   2.884850145215  -0.996376344398 Bohr
+[INPUT] 20 C      6.334625523180  -0.725985422219   0.431449473008 AA   11.970707340489  -1.371913618420   0.815321340573 Bohr
+[INPUT] 21 C      7.776189414137  -0.507225669544   0.392867291760 AA   14.694868285461  -0.958517598787   0.742411584727 Bohr
+[INPUT] 22 H     -6.315275504084   0.159872514031  -0.644443024793 AA  -11.934141103894   0.302115266364  -1.217820819746 Bohr
+[INPUT] 23 H     -6.611123441867   0.732152286033   1.010080232030 AA  -12.493212680821   1.383567302077   1.908775002374 Bohr
+[INPUT] 24 H     -6.845870926064  -1.754294621964   0.920832026283 AA  -12.936821134383  -3.315136377309   1.740120336404 Bohr
+[INPUT] 25 H     -5.406891313966  -1.352421334413   1.877351654514 AA  -10.217543768686  -2.555705927059   3.547680466530 Bohr
+[INPUT] 26 H     -5.517656342294  -2.303965845582  -1.047588061693 AA  -10.426859336405  -4.353864448502  -1.979654527964 Bohr
+[INPUT] 27 H     -4.722763629692  -3.100508745985   0.306220051113 AA   -8.924729811176  -5.859112376730   0.578672030453 Bohr
+[INPUT] 28 H     -4.872220757264   1.943426454930   2.263123923361 AA   -9.207162849650   3.672543743051   4.276684401103 Bohr
+[INPUT] 29 H     -4.098615767378   0.344941717335   2.498908871211 AA   -7.745261290169   0.651845374699   4.722253376835 Bohr
+[INPUT] 30 H     -3.143215463730   1.704963455724   1.861111226544 AA   -5.939816376948   3.221913983710   3.516990505522 Bohr
+[INPUT] 31 H     -5.537932795550   2.710134033577  -0.096346986283 AA  -10.465176279837   5.121411084324  -0.182069417002 Bohr
+[INPUT] 32 H     -3.781761530728   2.787825359318  -0.356143623212 AA   -7.146493561492   5.268226412229  -0.673013908881 Bohr
+[INPUT] 33 H     -4.815472192067   1.895186082545  -1.514791447246 AA   -9.099923603465   3.581382651097  -2.862540971129 Bohr
+[INPUT] 34 H     -2.177035194682   1.606027060874  -0.755085596110 AA   -4.114000281489   3.034951293691  -1.426904977251 Bohr
+[INPUT] 35 H     -2.171941155281  -2.994972374860  -0.474658910497 AA   -4.104373942152  -5.659677539125  -0.896975343424 Bohr
+[INPUT] 36 H     -1.908609963874  -1.746758283095  -1.724756009533 AA   -3.606750110338  -3.300894760866  -3.259316489715 Bohr
+[INPUT] 37 H     -3.229639480817  -2.948696511438  -1.894203615412 AA   -6.103134099827  -5.572228831079  -3.579526057290 Bohr
+[INPUT] 38 H     -0.843819771261  -0.978974434506   0.263308384275 AA   -1.594588266176  -1.849993564168   0.497580732582 Bohr
+[INPUT] 39 H      1.374183413281   2.495710543716  -1.088054624837 AA    2.596830296020   4.716209413813  -2.056125249508 Bohr
+[INPUT] 40 H     -0.205515997149   2.778546279121  -0.312598915822 AA   -0.388368948829   5.250691491968  -0.590726337740 Bohr
+[INPUT] 41 H     -0.135225586715   2.100014605985  -1.952466521681 AA   -0.255539323925   3.968452462899  -3.689626993360 Bohr
+[INPUT] 42 H      1.401699696782  -0.995018700732   0.357622285626 AA    2.648828535804  -1.880312833203   0.675808175874 Bohr
+[INPUT] 43 H      3.023721880557   1.483492871026  -0.609168733880 AA    5.714006231108   2.803395233984  -1.151162070682 Bohr
+[INPUT] 44 H      3.802800267625  -1.271250130774   0.565260437784 AA    7.186251012234  -2.402314582980   1.068187416463 Bohr
+[INPUT] 45 H      5.159225806024   2.303553427673   0.095470492441 AA    9.749523788173   4.353085091604   0.180413083691 Bohr
+[INPUT] 46 H      5.220895991453   1.623374635113  -1.545763289198 AA    9.866063548685   3.067733457929  -2.921069269991 Bohr
+[INPUT] 47 H      6.713581577765   1.744295738240  -0.577087111762 AA   12.686830496902   3.296241225519  -1.090536591246 Bohr
+[INPUT] 48 H      6.040513993685  -1.706949192591   0.826929298297 AA   11.414917099668  -3.225666482545   1.562669898160 Bohr
+[INPUT] 49 H      8.123832155725   0.483554957576  -0.004140928397 AA   15.351817856255   0.913786435995  -0.007825220571 Bohr
+[INPUT] ---------------- BASIS SET ---------------- 
+[INPUT] l, kappa, [nprim/nctr], expnt,             c_1 c_2 ...
+[INPUT] H
+[INPUT] 0    0    [3    /1   ]  34.061341         0.0060251978
+                                5.1235746         0.045021094
+                                1.1646626         0.20189726
+[INPUT] 0    0    [1    /1   ]  0.32723041           1
+[INPUT] 0    0    [1    /1   ]  0.10307241           1
+[INPUT] 1    0    [1    /1   ]  0.8                  1
+[INPUT] O
+[INPUT] 0    0    [6    /1   ]  27032.382631      0.00021726302465
+                                4052.3871392      0.0016838662199
+                                922.3272271       0.0087395616265
+                                261.24070989      0.035239968808
+                                85.354641351      0.11153519115
+                                31.035035245      0.25588953961
+[INPUT] 0    0    [2    /1   ]  12.260860728      0.39768730901
+                                4.9987076005      0.2462784943
+[INPUT] 0    0    [1    /1   ]  1.1703108158         1
+[INPUT] 0    0    [1    /1   ]  0.46474740994        1
+[INPUT] 0    0    [1    /1   ]  0.18504536357        1
+[INPUT] 1    0    [4    /1   ]  63.274954801      0.0060685103418
+                                14.627049379      0.041912575824
+                                4.4501223456      0.16153841088
+                                1.5275799647      0.35706951311
+[INPUT] 1    0    [1    /1   ]  0.52935117943        1
+[INPUT] 1    0    [1    /1   ]  0.1747842127         1
+[INPUT] 2    0    [1    /1   ]  2.314                1
+[INPUT] 2    0    [1    /1   ]  0.645                1
+[INPUT] 3    0    [1    /1   ]  1.428                1
+[INPUT] C
+[INPUT] 0    0    [6    /1   ]  13575.349682      0.00022245814352
+                                2035.233368       0.0017232738252
+                                463.22562359      0.0089255715314
+                                131.20019598      0.035727984502
+                                42.853015891      0.11076259931
+                                15.584185766      0.24295627626
+[INPUT] 0    0    [2    /1   ]  6.2067138508      0.41440263448
+                                2.5764896527      0.23744968655
+[INPUT] 0    0    [1    /1   ]  0.57696339419        1
+[INPUT] 0    0    [1    /1   ]  0.22972831358        1
+[INPUT] 0    0    [1    /1   ]  0.095164440028       1
+[INPUT] 1    0    [4    /1   ]  34.697232244      0.0053333657805
+                                7.9582622826      0.035864109092
+                                2.3780826883      0.14215873329
+                                0.81433208183     0.34270471845
+[INPUT] 1    0    [1    /1   ]  0.28887547253        1
+[INPUT] 1    0    [1    /1   ]  0.10056823671        1
+[INPUT] 2    0    [1    /1   ]  1.097                1
+[INPUT] 2    0    [1    /1   ]  0.318                1
+[INPUT] 3    0    [1    /1   ]  0.761                1
+
+nuclear repulsion = 1518.71363523781
+number of shells = 343
+number of NR pGTOs = 1190
+number of NR cGTOs = 819
+basis = def2-tzvp
+ecp = {}
+CPU time:         1.82
+RKS
+Density fitting turned on
+Molecule built
+Calculating SCF Energy...
+
+
+******** <class 'pyscf.df.df_jk.density_fit.<locals>.DFHF'> ********
+method = DFHF-RKS-RHF
+initial guess = chkfile
+damping factor = 0
+level_shift factor = 0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+diis_start_cycle = 1
+diis_space = 8
+SCF conv_tol = 1e-10
+SCF conv_tol_grad = None
+SCF max_cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = 49_Retinal_pbe0.chk
+max_memory 50000 MB (current use 55 MB)
+XC functionals = pbe0
+small_rho_cutoff = 1e-07
+radial grids: 
+    Treutler-Ahlrichs [JCP 102, 346 (1995); DOI:10.1063/1.469408] (M4) radial grids
+    
+becke partition: Becke, JCP 88, 2547 (1988); DOI:10.1063/1.454033
+pruning grids: <function nwchem_prune at 0x7f244c4b6e18>
+grids dens level: 3
+symmetrized grids: False
+atomic radii adjust function: <function treutler_atomic_radii_adjust at 0x7f244c4b6d90>
+Set gradient conv threshold to 1e-05
+atom O rad-grids = 75, ang-grids = [ 50  50  50  50  50  50  50  50  50  50  50  50  50  50  50  50  50  50
+  50  50  50  50  86  86  86  86  86  86  86  86  86 266 266 266 266 266
+ 266 266 302 302 302 302 302 302 302 302 302 302 302 302 302 302 302 302
+ 302 302 302 266 266 266 266 266 266 266 266 266 266 266 266 266 266 266
+ 266 266 266]
+atom C rad-grids = 75, ang-grids = [ 50  50  50  50  50  50  50  50  50  50  50  50  50  50  50  50  50  50
+  50  50  50  50  50  86  86  86  86  86  86  86  86  86  86 266 266 266
+ 266 266 266 266 302 302 302 302 302 302 302 302 302 302 302 302 302 302
+ 302 302 302 302 302 302 266 266 266 266 266 266 266 266 266 266 266 266
+ 266 266 266]
+atom H rad-grids = 50, ang-grids = [ 50  50  50  50  50  50  50  50  50  50  50  50  50  50  86  86  86  86
+ 266 266 266 266 302 302 302 302 302 302 302 302 302 302 302 302 302 266
+ 266 266 266 266 266 266 266 266 266 266 266 266 266 266]
+tot grids = 572974
+Drop grids 106950
+    CPU time for setting up grids     84.17 sec, wall time      6.25 sec
+nelec by numeric integration = 156.00012455774515
+    CPU time for vxc    111.30 sec, wall time      7.89 sec
+******** <class 'pyscf.df.df.DF'> ********
+auxbasis = None
+max_memory = 50000
+_cderi_to_save = /tmp/job.15978482.hpc/tmp0gxx79n1
+Default auxbasis def2-tzvp-jkfit is used for H def2-tzvp
+Default auxbasis def2-tzvp-jkfit is used for O def2-tzvp
+Default auxbasis def2-tzvp-jkfit is used for C def2-tzvp
+num shells = 693, num cGTOs = 2081
+size of aux basis 2081
+int3c2e [1/1], AO [0:343], nrow = 335790
+    CPU time for cholesky_eri     91.46 sec, wall time     18.31 sec
+    CPU time for df vj and vk    247.48 sec, wall time     31.47 sec
+E1 = -4169.209057801386  Ecoul = 1923.5259130368431  Exc = -126.45331248981881
+init E= -853.42282201655
+cond(S) = 689350.1788734539
+    CPU time for initialize scf    447.97 sec, wall time     46.15 sec
+  HOMO = -0.210304952206375  LUMO = -0.09553317821523
+  mo_energy =
+[-1.91846167e+01 -1.02970338e+01 -1.02692551e+01 -1.02598904e+01
+ -1.02509172e+01 -1.02492608e+01 -1.02439970e+01 -1.02431670e+01
+ -1.02416064e+01 -1.02398307e+01 -1.02372855e+01 -1.02369313e+01
+ -1.02363859e+01 -1.02351904e+01 -1.02322422e+01 -1.02306358e+01
+ -1.02246951e+01 -1.02232504e+01 -1.02227279e+01 -1.02198908e+01
+ -1.02157444e+01 -1.04897596e+00 -8.86039430e-01 -8.73352051e-01
+ -8.56535994e-01 -8.18406114e-01 -8.13935971e-01 -7.90759376e-01
+ -7.55844907e-01 -7.37645499e-01 -7.23706043e-01 -7.10843175e-01
+ -7.07732913e-01 -6.99355085e-01 -6.70872891e-01 -6.33161952e-01
+ -6.04663306e-01 -5.88574257e-01 -5.70554701e-01 -5.60621656e-01
+ -5.49272323e-01 -5.26647567e-01 -5.06414378e-01 -5.01412701e-01
+ -4.88881223e-01 -4.77164043e-01 -4.69735271e-01 -4.60250814e-01
+ -4.52372385e-01 -4.48482614e-01 -4.44459054e-01 -4.43958126e-01
+ -4.42027625e-01 -4.28418940e-01 -4.21892358e-01 -4.17593046e-01
+ -4.15956155e-01 -4.13026334e-01 -4.06663936e-01 -4.02283338e-01
+ -3.94867685e-01 -3.90265341e-01 -3.89207321e-01 -3.85647808e-01
+ -3.76028518e-01 -3.69133402e-01 -3.66485448e-01 -3.61794320e-01
+ -3.59873030e-01 -3.57068219e-01 -3.36645024e-01 -3.30387933e-01
+ -3.20937150e-01 -3.13369548e-01 -2.90293000e-01 -2.58208672e-01
+ -2.52869512e-01 -2.10304952e-01 -9.55331782e-02 -3.48730496e-02
+  1.35081219e-02  2.68609148e-02  3.50926910e-02  4.26969898e-02
+  4.70112978e-02  5.13178782e-02  5.92288379e-02  6.47388289e-02
+  6.78057015e-02  7.06120306e-02  7.36721903e-02  8.09513552e-02
+  8.54295167e-02  8.70436380e-02  8.92454960e-02  9.17620023e-02
+  1.01235882e-01  1.11056151e-01  1.16098215e-01  1.20694622e-01
+  1.23201256e-01  1.25138405e-01  1.30526982e-01  1.33786323e-01
+  1.37747174e-01  1.41551950e-01  1.42976705e-01  1.46155319e-01
+  1.49531348e-01  1.50608627e-01  1.53736124e-01  1.59513523e-01
+  1.65888010e-01  1.71615849e-01  1.74170015e-01  1.79410834e-01
+  1.83893326e-01  1.87391029e-01  1.89011211e-01  1.92365774e-01
+  1.96046008e-01  1.99262123e-01  2.05182906e-01  2.08510336e-01
+  2.11295500e-01  2.16341959e-01  2.17834547e-01  2.31504501e-01
+  2.34324980e-01  2.36295621e-01  2.39256348e-01  2.46700151e-01
+  2.52840019e-01  2.60582537e-01  2.65409684e-01  2.69190914e-01
+  2.73618418e-01  2.76972661e-01  2.81192397e-01  2.83983513e-01
+  2.89237010e-01  2.90474214e-01  2.98592909e-01  3.03465115e-01
+  3.11084097e-01  3.14706159e-01  3.20353451e-01  3.22434413e-01
+  3.28434559e-01  3.30531597e-01  3.33490202e-01  3.39221732e-01
+  3.46619840e-01  3.50990196e-01  3.52610801e-01  3.57820048e-01
+  3.60970929e-01  3.65854494e-01  3.69908149e-01  3.74856625e-01
+  3.78982110e-01  3.85062959e-01  3.87558299e-01  3.91178763e-01
+  3.92542041e-01  4.01157943e-01  4.04890882e-01  4.08107255e-01
+  4.13617274e-01  4.14031479e-01  4.18156125e-01  4.22770576e-01
+  4.24483962e-01  4.28280358e-01  4.29847282e-01  4.30945852e-01
+  4.35382976e-01  4.41144141e-01  4.42207018e-01  4.43656288e-01
+  4.44515937e-01  4.48724421e-01  4.56439294e-01  4.60254027e-01
+  4.63317164e-01  4.66224239e-01  4.69240378e-01  4.71495536e-01
+  4.75723654e-01  4.81499040e-01  4.83352785e-01  4.85012676e-01
+  4.86347580e-01  4.88835026e-01  4.95563009e-01  4.96539350e-01
+  5.02867994e-01  5.03840184e-01  5.08562056e-01  5.10763677e-01
+  5.17938565e-01  5.19949215e-01  5.23053631e-01  5.29616863e-01
+  5.32693533e-01  5.39068704e-01  5.39638578e-01  5.43711786e-01
+  5.59400275e-01  5.65516409e-01  5.71774590e-01  5.77021444e-01
+  5.84135193e-01  5.87296688e-01  5.90250899e-01  5.99863468e-01
+  6.01639738e-01  6.10013015e-01  6.12100637e-01  6.16664228e-01
+  6.22346747e-01  6.30994433e-01  6.32625094e-01  6.36903363e-01
+  6.46354911e-01  6.51073910e-01  6.53551898e-01  6.62899833e-01
+  6.70507151e-01  6.79605331e-01  6.82063560e-01  6.93513170e-01
+  6.96266225e-01  7.03476299e-01  7.04750337e-01  7.13625976e-01
+  7.15473951e-01  7.22345891e-01  7.25906016e-01  7.41649999e-01
+  7.44165537e-01  7.50380808e-01  7.56398718e-01  7.64962077e-01
+  7.67244263e-01  7.78862337e-01  7.79630467e-01  7.83857444e-01
+  7.90740524e-01  7.99806208e-01  8.11768820e-01  8.12401761e-01
+  8.25830891e-01  8.31104812e-01  8.40919979e-01  8.54115219e-01
+  8.61566574e-01  8.74350365e-01  8.80192519e-01  8.81300671e-01
+  8.87246554e-01  8.87855667e-01  9.00763723e-01  9.02922462e-01
+  9.07921061e-01  9.20035928e-01  9.20639856e-01  9.30530492e-01
+  9.35197622e-01  9.49363619e-01  9.57009592e-01  9.63781873e-01
+  9.66797343e-01  9.70900780e-01  9.79100690e-01  9.82496618e-01
+  9.89044330e-01  9.93411071e-01  9.99468435e-01  1.01649906e+00
+  1.01857709e+00  1.03274732e+00  1.03444145e+00  1.03906515e+00
+  1.04010960e+00  1.04678992e+00  1.06295650e+00  1.06444959e+00
+  1.06802683e+00  1.07564808e+00  1.08350264e+00  1.09068334e+00
+  1.09447020e+00  1.10190461e+00  1.10664052e+00  1.12436425e+00
+  1.12638545e+00  1.13469841e+00  1.14247670e+00  1.14989057e+00
+  1.15660240e+00  1.16694285e+00  1.16951754e+00  1.17727905e+00
+  1.18840706e+00  1.20203799e+00  1.20268919e+00  1.20960298e+00
+  1.21829074e+00  1.22434708e+00  1.23360992e+00  1.23737757e+00
+  1.24214051e+00  1.24628161e+00  1.25851009e+00  1.26587708e+00
+  1.26888586e+00  1.28248916e+00  1.28523205e+00  1.29892324e+00
+  1.30324697e+00  1.30816954e+00  1.31670573e+00  1.32758726e+00
+  1.33433510e+00  1.34225979e+00  1.34786586e+00  1.35059856e+00
+  1.35973824e+00  1.36944730e+00  1.38495929e+00  1.39100227e+00
+  1.39944891e+00  1.42911113e+00  1.42968294e+00  1.43606720e+00
+  1.43977572e+00  1.45326781e+00  1.46357190e+00  1.47865754e+00
+  1.48031281e+00  1.49485093e+00  1.49620670e+00  1.50252174e+00
+  1.50942384e+00  1.51551204e+00  1.51756824e+00  1.52326923e+00
+  1.52603750e+00  1.53061252e+00  1.54252436e+00  1.54622265e+00
+  1.54831830e+00  1.55121209e+00  1.55507038e+00  1.56339885e+00
+  1.56624533e+00  1.56787617e+00  1.57823300e+00  1.58891170e+00
+  1.59282706e+00  1.59687153e+00  1.59745555e+00  1.60675881e+00
+  1.60948957e+00  1.61464050e+00  1.61919788e+00  1.62052702e+00
+  1.62439292e+00  1.63127095e+00  1.64278188e+00  1.64865220e+00
+  1.65329334e+00  1.65871162e+00  1.66336402e+00  1.66689185e+00
+  1.67316529e+00  1.67916973e+00  1.69151247e+00  1.69186766e+00
+  1.69720565e+00  1.71377971e+00  1.71720316e+00  1.73377147e+00
+  1.73794609e+00  1.74269014e+00  1.74727579e+00  1.75074120e+00
+  1.76000071e+00  1.76478293e+00  1.78400924e+00  1.78938140e+00
+  1.79429836e+00  1.80983875e+00  1.81845882e+00  1.82183389e+00
+  1.83190717e+00  1.83909979e+00  1.84939921e+00  1.87126892e+00
+  1.87935897e+00  1.88415913e+00  1.89046777e+00  1.89242862e+00
+  1.90381025e+00  1.90967742e+00  1.91885369e+00  1.93011701e+00
+  1.94158276e+00  1.94747246e+00  1.95482461e+00  1.95620975e+00
+  1.97759156e+00  1.98622932e+00  1.99343819e+00  1.99967638e+00
+  2.00381817e+00  2.01372736e+00  2.01488531e+00  2.02189320e+00
+  2.02997632e+00  2.03919700e+00  2.04446639e+00  2.05740324e+00
+  2.06559446e+00  2.06774974e+00  2.07624705e+00  2.08039325e+00
+  2.09033610e+00  2.10524645e+00  2.11018137e+00  2.11920616e+00
+  2.12903046e+00  2.13596586e+00  2.15087376e+00  2.16119003e+00
+  2.16587769e+00  2.17192422e+00  2.17939874e+00  2.18270100e+00
+  2.19036528e+00  2.19793894e+00  2.21912482e+00  2.23336146e+00
+  2.23660093e+00  2.24326953e+00  2.24889549e+00  2.25776046e+00
+  2.27172369e+00  2.28399014e+00  2.29471762e+00  2.29900916e+00
+  2.30699646e+00  2.30781180e+00  2.31195640e+00  2.31725679e+00
+  2.32394678e+00  2.33506569e+00  2.34136370e+00  2.35180080e+00
+  2.35386454e+00  2.36700661e+00  2.37406039e+00  2.38311459e+00
+  2.38389968e+00  2.38635370e+00  2.39321818e+00  2.39690349e+00
+  2.41324338e+00  2.42267622e+00  2.43029403e+00  2.43564050e+00
+  2.43794736e+00  2.45145801e+00  2.46696309e+00  2.47562705e+00
+  2.48320640e+00  2.49189093e+00  2.49477734e+00  2.49768258e+00
+  2.50156371e+00  2.51257687e+00  2.51499011e+00  2.51575950e+00
+  2.51989510e+00  2.53013099e+00  2.53296643e+00  2.53713727e+00
+  2.54310426e+00  2.55154322e+00  2.55794342e+00  2.56284966e+00
+  2.57668105e+00  2.58333865e+00  2.58712110e+00  2.58884451e+00
+  2.59358271e+00  2.59554470e+00  2.60336880e+00  2.60890555e+00
+  2.61398867e+00  2.62571599e+00  2.63266994e+00  2.63523963e+00
+  2.64016495e+00  2.64639898e+00  2.65717178e+00  2.66428699e+00
+  2.67473967e+00  2.67816777e+00  2.68309938e+00  2.69112546e+00
+  2.70347954e+00  2.70738517e+00  2.71246567e+00  2.71893276e+00
+  2.72903500e+00  2.73090365e+00  2.73945138e+00  2.74182529e+00
+  2.74371867e+00  2.75729847e+00  2.76286929e+00  2.77170435e+00
+  2.77677004e+00  2.77925209e+00  2.78399164e+00  2.79447232e+00
+  2.80777015e+00  2.81792970e+00  2.82445355e+00  2.83118565e+00
+  2.83397941e+00  2.83952439e+00  2.84531382e+00  2.85000625e+00
+  2.85389759e+00  2.85910511e+00  2.86856717e+00  2.87824250e+00
+  2.88924751e+00  2.89134981e+00  2.89724124e+00  2.90122869e+00
+  2.90941690e+00  2.91507287e+00  2.91928354e+00  2.92586113e+00
+  2.94097987e+00  2.94422308e+00  2.95741302e+00  2.96322216e+00
+  2.97386104e+00  2.98592585e+00  2.99386216e+00  2.99842790e+00
+  3.00650388e+00  3.02255357e+00  3.03033689e+00  3.03650315e+00
+  3.03831770e+00  3.04151194e+00  3.05314036e+00  3.06013838e+00
+  3.06507121e+00  3.07174599e+00  3.07324088e+00  3.08222002e+00
+  3.09001959e+00  3.09258219e+00  3.09819990e+00  3.10647933e+00
+  3.10946247e+00  3.12196664e+00  3.13060944e+00  3.13459793e+00
+  3.14118461e+00  3.14536812e+00  3.15252730e+00  3.16188484e+00
+  3.16313749e+00  3.16937991e+00  3.18209436e+00  3.18399233e+00
+  3.19048891e+00  3.19741880e+00  3.20199008e+00  3.20312878e+00
+  3.20801981e+00  3.21202116e+00  3.21571909e+00  3.22099005e+00
+  3.22720613e+00  3.24141316e+00  3.24486351e+00  3.24962709e+00
+  3.25311806e+00  3.25691428e+00  3.26139918e+00  3.26617653e+00
+  3.26910601e+00  3.27553093e+00  3.28038618e+00  3.28309596e+00
+  3.28848759e+00  3.29476498e+00  3.29954276e+00  3.30393745e+00
+  3.31552959e+00  3.32049173e+00  3.32685573e+00  3.32913841e+00
+  3.33692001e+00  3.34398161e+00  3.34529550e+00  3.34762326e+00
+  3.35555119e+00  3.35973856e+00  3.36112582e+00  3.36839289e+00
+  3.37372407e+00  3.38140055e+00  3.38877335e+00  3.39275176e+00
+  3.39553271e+00  3.40535525e+00  3.41059890e+00  3.41327075e+00
+  3.42212652e+00  3.43060406e+00  3.43297941e+00  3.44677336e+00
+  3.45410821e+00  3.45711293e+00  3.46111333e+00  3.46905431e+00
+  3.48827290e+00  3.49643205e+00  3.49965961e+00  3.50720455e+00
+  3.51263576e+00  3.51714856e+00  3.52184721e+00  3.52559238e+00
+  3.54261936e+00  3.54875130e+00  3.55386112e+00  3.56486166e+00
+  3.57343591e+00  3.58527712e+00  3.59167872e+00  3.59863791e+00
+  3.60412939e+00  3.61188531e+00  3.61808293e+00  3.62162656e+00
+  3.63556035e+00  3.64729949e+00  3.65307453e+00  3.66055364e+00
+  3.67909953e+00  3.68391328e+00  3.69137996e+00  3.70166528e+00
+  3.70821166e+00  3.71439009e+00  3.72755400e+00  3.73795994e+00
+  3.75086855e+00  3.75346555e+00  3.75658439e+00  3.77449274e+00
+  3.78167485e+00  3.78636655e+00  3.78842806e+00  3.79917231e+00
+  3.82594148e+00  3.82819572e+00  3.83858036e+00  3.84570949e+00
+  3.85578673e+00  3.87033963e+00  3.88715898e+00  3.88943921e+00
+  3.91133784e+00  3.91713393e+00  3.92174254e+00  3.92981064e+00
+  3.93970396e+00  3.95068575e+00  3.96117390e+00  3.96596000e+00
+  3.97158604e+00  3.98657304e+00  4.01337011e+00  4.01633109e+00
+  4.02004209e+00  4.04266721e+00  4.04863368e+00  4.07253751e+00
+  4.08674843e+00  4.09546953e+00  4.10782649e+00  4.12743076e+00
+  4.13313179e+00  4.13455223e+00  4.14127078e+00  4.16561182e+00
+  4.16904367e+00  4.18007628e+00  4.18717840e+00  4.21722031e+00
+  4.22142464e+00  4.23446269e+00  4.23733014e+00  4.25230967e+00
+  4.25807398e+00  4.26911510e+00  4.27231695e+00  4.27837302e+00
+  4.29199340e+00  4.29945853e+00  4.30440538e+00  4.33025326e+00
+  4.34106988e+00  4.34567523e+00  4.35732009e+00  4.38121902e+00
+  4.39593321e+00  4.40342081e+00  4.41091350e+00  4.42177543e+00
+  4.43392351e+00  4.44136497e+00  4.45140348e+00  4.45916913e+00
+  4.47299357e+00  4.47606720e+00  4.48491084e+00  4.49109503e+00
+  4.50157972e+00  4.52649989e+00  4.53255581e+00  4.54033697e+00
+  4.54763798e+00  4.55027821e+00  4.58919117e+00  4.59491280e+00
+  4.61442390e+00  4.62857384e+00  4.64054569e+00  4.65412698e+00
+  4.67531940e+00  4.69414379e+00  4.70289890e+00  4.72777770e+00
+  4.73226929e+00  4.75308759e+00  4.79229829e+00  4.79266445e+00
+  4.82920773e+00  4.84986227e+00  4.86790813e+00  4.89004240e+00
+  4.90305203e+00  4.91959697e+00  4.95487868e+00  4.96567808e+00
+  4.99289584e+00  5.00822870e+00  5.05050011e+00  5.07938024e+00
+  5.10364439e+00  5.12676220e+00  5.12796663e+00  5.14022295e+00
+  5.17551019e+00  5.21080309e+00  5.21678194e+00  5.23985249e+00
+  5.26706881e+00  5.29532043e+00  5.32470568e+00  5.36195409e+00
+  5.45575710e+00  5.53861934e+00  5.56011564e+00  5.57516250e+00
+  5.63163248e+00  5.70974010e+00  6.07449444e+00  6.33516928e+00
+  6.37810459e+00  6.45759439e+00  6.50423163e+00  6.82289786e+00
+  6.99554770e+00  7.07934111e+00  2.23805350e+01  2.24472500e+01
+  2.24496210e+01  2.24645472e+01  2.24952105e+01  2.25196168e+01
+  2.25724309e+01  2.25843414e+01  2.26241445e+01  2.26437283e+01
+  2.26586142e+01  2.27175102e+01  2.27626459e+01  2.27913573e+01
+  2.28392815e+01  2.28651155e+01  2.29087094e+01  2.30732021e+01
+  2.31468229e+01  2.33059793e+01  4.39459105e+01]
+nelec by numeric integration = 156.00012455763573
+    CPU time for vxc    109.55 sec, wall time      7.55 sec
+    CPU time for df vj and vk    156.17 sec, wall time     12.59 sec
+E1 = -4169.209035447238  Ecoul = 1923.5258920665915  Exc = -126.45331387367108
+cycle= 1 E= -853.422822016506  delta_E= 4.37e-11  |g|= 1.4e-05  |ddm|= 2.09e-05
+    CPU time for cycle= 1    268.51 sec, wall time     20.51 sec
+  HOMO = -0.2103053337066  LUMO = -0.0955329089507203
+  mo_energy =
+[-1.91846160e+01 -1.02970255e+01 -1.02692567e+01 -1.02598965e+01
+ -1.02509205e+01 -1.02492607e+01 -1.02440002e+01 -1.02431652e+01
+ -1.02416054e+01 -1.02398338e+01 -1.02372879e+01 -1.02369321e+01
+ -1.02363859e+01 -1.02351928e+01 -1.02322314e+01 -1.02306366e+01
+ -1.02246950e+01 -1.02232502e+01 -1.02227289e+01 -1.02198905e+01
+ -1.02157440e+01 -1.04897286e+00 -8.86040406e-01 -8.73352442e-01
+ -8.56536627e-01 -8.18406837e-01 -8.13936589e-01 -7.90759731e-01
+ -7.55845943e-01 -7.37643610e-01 -7.23707234e-01 -7.10843892e-01
+ -7.07733120e-01 -6.99355588e-01 -6.70872713e-01 -6.33161983e-01
+ -6.04663473e-01 -5.88574462e-01 -5.70554623e-01 -5.60621279e-01
+ -5.49271357e-01 -5.26648395e-01 -5.06414877e-01 -5.01412396e-01
+ -4.88881544e-01 -4.77164560e-01 -4.69735443e-01 -4.60250884e-01
+ -4.52372966e-01 -4.48482840e-01 -4.44459884e-01 -4.43959236e-01
+ -4.42028392e-01 -4.28417991e-01 -4.21892035e-01 -4.17593419e-01
+ -4.15956776e-01 -4.13027104e-01 -4.06664438e-01 -4.02283173e-01
+ -3.94864584e-01 -3.90265240e-01 -3.89207813e-01 -3.85648317e-01
+ -3.76028823e-01 -3.69133849e-01 -3.66485863e-01 -3.61794965e-01
+ -3.59874098e-01 -3.57069040e-01 -3.36645381e-01 -3.30388556e-01
+ -3.20937774e-01 -3.13370211e-01 -2.90292751e-01 -2.58206231e-01
+ -2.52869906e-01 -2.10305334e-01 -9.55329090e-02 -3.48730454e-02
+  1.35077023e-02  2.68601996e-02  3.50921656e-02  4.26970652e-02
+  4.70110970e-02  5.13176505e-02  5.92279430e-02  6.47391075e-02
+  6.78068600e-02  7.06114637e-02  7.36722819e-02  8.09520603e-02
+  8.54293345e-02  8.70433130e-02  8.92447535e-02  9.17612080e-02
+  1.01235713e-01  1.11055937e-01  1.16097783e-01  1.20694305e-01
+  1.23200999e-01  1.25138296e-01  1.30526715e-01  1.33785919e-01
+  1.37747668e-01  1.41551498e-01  1.42976363e-01  1.46154777e-01
+  1.49531097e-01  1.50608449e-01  1.53735723e-01  1.59512802e-01
+  1.65887660e-01  1.71615117e-01  1.74169715e-01  1.79410380e-01
+  1.83892860e-01  1.87391536e-01  1.89010626e-01  1.92366343e-01
+  1.96047452e-01  1.99261795e-01  2.05182288e-01  2.08509760e-01
+  2.11294770e-01  2.16341849e-01  2.17834108e-01  2.31504381e-01
+  2.34325244e-01  2.36295158e-01  2.39256040e-01  2.46700140e-01
+  2.52840238e-01  2.60581779e-01  2.65409628e-01  2.69190917e-01
+  2.73617969e-01  2.76972333e-01  2.81192012e-01  2.83983057e-01
+  2.89236868e-01  2.90474730e-01  2.98592626e-01  3.03464904e-01
+  3.11084329e-01  3.14705384e-01  3.20352870e-01  3.22434383e-01
+  3.28435166e-01  3.30531217e-01  3.33490252e-01  3.39221496e-01
+  3.46619700e-01  3.50989960e-01  3.52611151e-01  3.57819834e-01
+  3.60970169e-01  3.65854697e-01  3.69907897e-01  3.74856228e-01
+  3.78981876e-01  3.85062825e-01  3.87558214e-01  3.91178347e-01
+  3.92541883e-01  4.01157859e-01  4.04890363e-01  4.08107716e-01
+  4.13616790e-01  4.14031646e-01  4.18155768e-01  4.22770118e-01
+  4.24483694e-01  4.28280547e-01  4.29846948e-01  4.30946391e-01
+  4.35382417e-01  4.41143876e-01  4.42206671e-01  4.43655646e-01
+  4.44515389e-01  4.48723914e-01  4.56438825e-01  4.60253536e-01
+  4.63317003e-01  4.66223926e-01  4.69239982e-01  4.71495056e-01
+  4.75723953e-01  4.81498687e-01  4.83352200e-01  4.85012266e-01
+  4.86347403e-01  4.88834304e-01  4.95562411e-01  4.96539820e-01
+  5.02868282e-01  5.03840839e-01  5.08562049e-01  5.10763218e-01
+  5.17938645e-01  5.19948726e-01  5.23053083e-01  5.29617486e-01
+  5.32693732e-01  5.39068313e-01  5.39638318e-01  5.43711151e-01
+  5.59400540e-01  5.65516165e-01  5.71774182e-01  5.77020942e-01
+  5.84134494e-01  5.87296163e-01  5.90250390e-01  5.99862794e-01
+  6.01639468e-01  6.10013197e-01  6.12100796e-01  6.16664037e-01
+  6.22346778e-01  6.30994434e-01  6.32624759e-01  6.36903525e-01
+  6.46354690e-01  6.51073254e-01  6.53551767e-01  6.62899691e-01
+  6.70506861e-01  6.79605396e-01  6.82064205e-01  6.93512801e-01
+  6.96266433e-01  7.03475601e-01  7.04750184e-01  7.13625520e-01
+  7.15473618e-01  7.22345281e-01  7.25906161e-01  7.41649867e-01
+  7.44165415e-01  7.50382311e-01  7.56398364e-01  7.64962300e-01
+  7.67244119e-01  7.78861870e-01  7.79629703e-01  7.83856901e-01
+  7.90739694e-01  7.99805739e-01  8.11768396e-01  8.12400884e-01
+  8.25830733e-01  8.31104248e-01  8.40919796e-01  8.54114840e-01
+  8.61566051e-01  8.74350826e-01  8.80193000e-01  8.81300676e-01
+  8.87245939e-01  8.87855282e-01  9.00763504e-01  9.02922413e-01
+  9.07920825e-01  9.20035857e-01  9.20639689e-01  9.30530052e-01
+  9.35197086e-01  9.49364132e-01  9.57009060e-01  9.63781757e-01
+  9.66797190e-01  9.70900903e-01  9.79100143e-01  9.82496471e-01
+  9.89044176e-01  9.93411631e-01  9.99468135e-01  1.01649876e+00
+  1.01857670e+00  1.03274680e+00  1.03444085e+00  1.03906553e+00
+  1.04010914e+00  1.04678982e+00  1.06295609e+00  1.06444912e+00
+  1.06802689e+00  1.07564734e+00  1.08350201e+00  1.09068276e+00
+  1.09446965e+00  1.10190486e+00  1.10664029e+00  1.12436390e+00
+  1.12638580e+00  1.13469801e+00  1.14247638e+00  1.14989041e+00
+  1.15660211e+00  1.16694239e+00  1.16951811e+00  1.17727844e+00
+  1.18840683e+00  1.20203768e+00  1.20268881e+00  1.20960263e+00
+  1.21829021e+00  1.22434683e+00  1.23360955e+00  1.23737757e+00
+  1.24214057e+00  1.24628172e+00  1.25851002e+00  1.26587623e+00
+  1.26888524e+00  1.28248866e+00  1.28523153e+00  1.29892262e+00
+  1.30324704e+00  1.30816972e+00  1.31670546e+00  1.32758759e+00
+  1.33433592e+00  1.34225945e+00  1.34786585e+00  1.35059923e+00
+  1.35973766e+00  1.36944613e+00  1.38495857e+00  1.39100169e+00
+  1.39944833e+00  1.42911311e+00  1.42968260e+00  1.43606660e+00
+  1.43977592e+00  1.45326716e+00  1.46357300e+00  1.47865747e+00
+  1.48031243e+00  1.49485220e+00  1.49620779e+00  1.50252116e+00
+  1.50942389e+00  1.51551210e+00  1.51756787e+00  1.52326853e+00
+  1.52603702e+00  1.53061273e+00  1.54252322e+00  1.54622227e+00
+  1.54831792e+00  1.55121149e+00  1.55506984e+00  1.56339942e+00
+  1.56624459e+00  1.56787607e+00  1.57823243e+00  1.58891159e+00
+  1.59282652e+00  1.59687244e+00  1.59745517e+00  1.60675816e+00
+  1.60948909e+00  1.61463995e+00  1.61919707e+00  1.62052698e+00
+  1.62439209e+00  1.63127045e+00  1.64278128e+00  1.64865158e+00
+  1.65329371e+00  1.65871099e+00  1.66336380e+00  1.66689140e+00
+  1.67316486e+00  1.67916908e+00  1.69151250e+00  1.69186910e+00
+  1.69720548e+00  1.71377974e+00  1.71720261e+00  1.73377111e+00
+  1.73794578e+00  1.74268954e+00  1.74727540e+00  1.75074185e+00
+  1.76000106e+00  1.76478299e+00  1.78400953e+00  1.78938109e+00
+  1.79429825e+00  1.80983820e+00  1.81845799e+00  1.82183370e+00
+  1.83190835e+00  1.83909920e+00  1.84939872e+00  1.87126840e+00
+  1.87935837e+00  1.88415864e+00  1.89046769e+00  1.89243006e+00
+  1.90380981e+00  1.90967699e+00  1.91885345e+00  1.93011671e+00
+  1.94158251e+00  1.94747379e+00  1.95482410e+00  1.95620885e+00
+  1.97759112e+00  1.98622931e+00  1.99343754e+00  1.99967564e+00
+  2.00381802e+00  2.01372755e+00  2.01488507e+00  2.02189239e+00
+  2.02997567e+00  2.03919602e+00  2.04446646e+00  2.05740272e+00
+  2.06559336e+00  2.06774912e+00  2.07624666e+00  2.08039253e+00
+  2.09033609e+00  2.10524629e+00  2.11018162e+00  2.11920646e+00
+  2.12903019e+00  2.13596517e+00  2.15087321e+00  2.16118955e+00
+  2.16587692e+00  2.17192357e+00  2.17939816e+00  2.18270268e+00
+  2.19036509e+00  2.19793859e+00  2.21912424e+00  2.23336165e+00
+  2.23660229e+00  2.24326915e+00  2.24889496e+00  2.25775961e+00
+  2.27172307e+00  2.28398950e+00  2.29471693e+00  2.29900853e+00
+  2.30699741e+00  2.30781235e+00  2.31195569e+00  2.31725555e+00
+  2.32394620e+00  2.33506507e+00  2.34136310e+00  2.35180296e+00
+  2.35386410e+00  2.36700652e+00  2.37405968e+00  2.38311388e+00
+  2.38389968e+00  2.38635329e+00  2.39321716e+00  2.39690271e+00
+  2.41324279e+00  2.42267605e+00  2.43029320e+00  2.43564003e+00
+  2.43794691e+00  2.45145749e+00  2.46696239e+00  2.47562660e+00
+  2.48320572e+00  2.49189129e+00  2.49477674e+00  2.49768320e+00
+  2.50156472e+00  2.51257769e+00  2.51498907e+00  2.51575910e+00
+  2.51989518e+00  2.53013063e+00  2.53296612e+00  2.53713726e+00
+  2.54310368e+00  2.55154242e+00  2.55794286e+00  2.56284888e+00
+  2.57668027e+00  2.58333810e+00  2.58712128e+00  2.58884458e+00
+  2.59358310e+00  2.59554472e+00  2.60336889e+00  2.60890503e+00
+  2.61398824e+00  2.62571567e+00  2.63267005e+00  2.63523895e+00
+  2.64016514e+00  2.64639849e+00  2.65717259e+00  2.66428815e+00
+  2.67473925e+00  2.67816771e+00  2.68309923e+00  2.69112485e+00
+  2.70347955e+00  2.70738565e+00  2.71246558e+00  2.71893248e+00
+  2.72903472e+00  2.73090374e+00  2.73945099e+00  2.74182482e+00
+  2.74371838e+00  2.75729790e+00  2.76286809e+00  2.77170405e+00
+  2.77677187e+00  2.77925178e+00  2.78399173e+00  2.79447259e+00
+  2.80776928e+00  2.81792924e+00  2.82445385e+00  2.83118476e+00
+  2.83397920e+00  2.83952378e+00  2.84531346e+00  2.85000567e+00
+  2.85389717e+00  2.85910433e+00  2.86856680e+00  2.87824337e+00
+  2.88924922e+00  2.89135155e+00  2.89724115e+00  2.90122889e+00
+  2.90941683e+00  2.91507208e+00  2.91928268e+00  2.92586041e+00
+  2.94097931e+00  2.94422225e+00  2.95741206e+00  2.96322138e+00
+  2.97386077e+00  2.98592540e+00  2.99386093e+00  2.99842966e+00
+  3.00650299e+00  3.02255295e+00  3.03033621e+00  3.03650295e+00
+  3.03831870e+00  3.04151408e+00  3.05313966e+00  3.06013773e+00
+  3.06507143e+00  3.07174591e+00  3.07323987e+00  3.08221973e+00
+  3.09001918e+00  3.09258272e+00  3.09820075e+00  3.10647919e+00
+  3.10946154e+00  3.12196699e+00  3.13060882e+00  3.13459769e+00
+  3.14118361e+00  3.14536745e+00  3.15252821e+00  3.16188416e+00
+  3.16313772e+00  3.16937922e+00  3.18209375e+00  3.18399222e+00
+  3.19048849e+00  3.19741840e+00  3.20199031e+00  3.20313006e+00
+  3.20801992e+00  3.21202102e+00  3.21571852e+00  3.22098967e+00
+  3.22720581e+00  3.24141240e+00  3.24486330e+00  3.24962691e+00
+  3.25311752e+00  3.25691434e+00  3.26139940e+00  3.26617660e+00
+  3.26910695e+00  3.27553063e+00  3.28038538e+00  3.28309542e+00
+  3.28848725e+00  3.29476521e+00  3.29954350e+00  3.30393762e+00
+  3.31553015e+00  3.32049250e+00  3.32685561e+00  3.32913784e+00
+  3.33691919e+00  3.34398103e+00  3.34529504e+00  3.34762276e+00
+  3.35555107e+00  3.35973909e+00  3.36112525e+00  3.36839248e+00
+  3.37372326e+00  3.38140019e+00  3.38877248e+00  3.39275131e+00
+  3.39553228e+00  3.40535531e+00  3.41059863e+00  3.41327017e+00
+  3.42212572e+00  3.43060355e+00  3.43297972e+00  3.44677285e+00
+  3.45410793e+00  3.45711288e+00  3.46111353e+00  3.46905520e+00
+  3.48827246e+00  3.49643155e+00  3.49965905e+00  3.50720436e+00
+  3.51263523e+00  3.51714843e+00  3.52184651e+00  3.52559175e+00
+  3.54261888e+00  3.54875093e+00  3.55386072e+00  3.56486160e+00
+  3.57343521e+00  3.58527682e+00  3.59167848e+00  3.59863830e+00
+  3.60412859e+00  3.61188480e+00  3.61808235e+00  3.62162627e+00
+  3.63555977e+00  3.64729897e+00  3.65307483e+00  3.66055348e+00
+  3.67910008e+00  3.68391473e+00  3.69137963e+00  3.70166493e+00
+  3.70821096e+00  3.71438943e+00  3.72755380e+00  3.73796026e+00
+  3.75086790e+00  3.75346525e+00  3.75658350e+00  3.77449230e+00
+  3.78167407e+00  3.78636629e+00  3.78842785e+00  3.79917207e+00
+  3.82594102e+00  3.82819512e+00  3.83858016e+00  3.84571018e+00
+  3.85578590e+00  3.87033885e+00  3.88715830e+00  3.88943976e+00
+  3.91133684e+00  3.91713513e+00  3.92174316e+00  3.92980995e+00
+  3.93970292e+00  3.95068710e+00  3.96117386e+00  3.96595931e+00
+  3.97158498e+00  3.98657248e+00  4.01337004e+00  4.01633064e+00
+  4.02004169e+00  4.04266632e+00  4.04863286e+00  4.07253629e+00
+  4.08674782e+00  4.09546873e+00  4.10782607e+00  4.12743055e+00
+  4.13313214e+00  4.13455209e+00  4.14127035e+00  4.16561166e+00
+  4.16904328e+00  4.18007801e+00  4.18717850e+00  4.21721980e+00
+  4.22142452e+00  4.23446160e+00  4.23733038e+00  4.25230905e+00
+  4.25807334e+00  4.26911411e+00  4.27231745e+00  4.27837295e+00
+  4.29199349e+00  4.29945859e+00  4.30440521e+00  4.33025310e+00
+  4.34106909e+00  4.34567468e+00  4.35731901e+00  4.38121858e+00
+  4.39593263e+00  4.40342076e+00  4.41091287e+00  4.42177467e+00
+  4.43392306e+00  4.44136416e+00  4.45140324e+00  4.45916928e+00
+  4.47299294e+00  4.47606659e+00  4.48491034e+00  4.49109477e+00
+  4.50157915e+00  4.52650176e+00  4.53255540e+00  4.54033667e+00
+  4.54763740e+00  4.55027770e+00  4.58919105e+00  4.59491219e+00
+  4.61442325e+00  4.62857352e+00  4.64054483e+00  4.65412637e+00
+  4.67532041e+00  4.69414288e+00  4.70289881e+00  4.72777765e+00
+  4.73226867e+00  4.75308716e+00  4.79229781e+00  4.79266467e+00
+  4.82920758e+00  4.84986187e+00  4.86790761e+00  4.89004323e+00
+  4.90305166e+00  4.91959741e+00  4.95487824e+00  4.96567709e+00
+  4.99289521e+00  5.00822790e+00  5.05050024e+00  5.07937971e+00
+  5.10364403e+00  5.12676197e+00  5.12796662e+00  5.14022228e+00
+  5.17550912e+00  5.21080186e+00  5.21678367e+00  5.23985188e+00
+  5.26706944e+00  5.29531957e+00  5.32470524e+00  5.36195355e+00
+  5.45575692e+00  5.53861839e+00  5.56011789e+00  5.57516116e+00
+  5.63163094e+00  5.70974245e+00  6.07449707e+00  6.33517229e+00
+  6.37810594e+00  6.45759725e+00  6.50423306e+00  6.82289933e+00
+  6.99554925e+00  7.07934286e+00  2.23805343e+01  2.24472491e+01
+  2.24496199e+01  2.24645470e+01  2.24952106e+01  2.25196158e+01
+  2.25724317e+01  2.25843431e+01  2.26241438e+01  2.26437283e+01
+  2.26586132e+01  2.27175093e+01  2.27626458e+01  2.27913565e+01
+  2.28392813e+01  2.28651212e+01  2.29087086e+01  2.30732028e+01
+  2.31468213e+01  2.33059778e+01  4.39459113e+01]
+nelec by numeric integration = 156.0001245577618
+    CPU time for vxc    104.33 sec, wall time      7.31 sec
+    CPU time for df vj and vk    156.86 sec, wall time     12.88 sec
+E1 = -4169.2091275200355  Ecoul = 1923.5259848499177  Exc = -126.45331458403405
+cycle= 2 E= -853.42282201634  delta_E= 1.66e-10  |g|= 2.84e-05  |ddm|= 4.18e-05
+    CPU time for cycle= 2    264.49 sec, wall time     20.59 sec
+  HOMO = -0.210304986838254  LUMO = -0.0955329926225514
+  mo_energy =
+[-1.91846160e+01 -1.02970305e+01 -1.02692558e+01 -1.02598921e+01
+ -1.02509179e+01 -1.02492607e+01 -1.02439983e+01 -1.02431666e+01
+ -1.02416056e+01 -1.02398316e+01 -1.02372859e+01 -1.02369316e+01
+ -1.02363856e+01 -1.02351910e+01 -1.02322387e+01 -1.02306360e+01
+ -1.02246950e+01 -1.02232502e+01 -1.02227281e+01 -1.02198905e+01
+ -1.02157441e+01 -1.04897462e+00 -8.86039665e-01 -8.73352116e-01
+ -8.56536117e-01 -8.18406307e-01 -8.13936071e-01 -7.90759409e-01
+ -7.55845156e-01 -7.37644859e-01 -7.23706324e-01 -7.10843339e-01
+ -7.07732889e-01 -6.99355215e-01 -6.70872739e-01 -6.33161878e-01
+ -6.04663290e-01 -5.88574244e-01 -5.70554585e-01 -5.60621444e-01
+ -5.49271911e-01 -5.26647741e-01 -5.06414472e-01 -5.01412549e-01
+ -4.88881276e-01 -4.77164146e-01 -4.69735273e-01 -4.60250755e-01
+ -4.52372455e-01 -4.48482712e-01 -4.44459252e-01 -4.43958395e-01
+ -4.42027846e-01 -4.28418470e-01 -4.21892176e-01 -4.17593124e-01
+ -4.15956296e-01 -4.13026526e-01 -4.06664031e-01 -4.02283270e-01
+ -3.94866459e-01 -3.90265225e-01 -3.89207388e-01 -3.85647932e-01
+ -3.76028574e-01 -3.69133518e-01 -3.66485528e-01 -3.61794461e-01
+ -3.59873283e-01 -3.57068384e-01 -3.36645086e-01 -3.30388067e-01
+ -3.20937280e-01 -3.13369704e-01 -2.90292837e-01 -2.58207667e-01
+ -2.52869577e-01 -2.10304987e-01 -9.55329926e-02 -3.48729398e-02
+  1.35080649e-02  2.68607114e-02  3.50925311e-02  4.26970841e-02
+  4.70112653e-02  5.13178492e-02  5.92286276e-02  6.47389304e-02
+  6.78060967e-02  7.06118819e-02  7.36722277e-02  8.09516132e-02
+  8.54294787e-02  8.70435513e-02  8.92452981e-02  9.17617865e-02
+  1.01235834e-01  1.11056095e-01  1.16098079e-01  1.20694535e-01
+  1.23201181e-01  1.25138384e-01  1.30526922e-01  1.33786216e-01
+  1.37747371e-01  1.41551830e-01  1.42976626e-01  1.46155163e-01
+  1.49531282e-01  1.50608606e-01  1.53736016e-01  1.59513334e-01
+  1.65887933e-01  1.71615651e-01  1.74169946e-01  1.79410697e-01
+  1.83893210e-01  1.87391239e-01  1.89011059e-01  1.92365989e-01
+  1.96046502e-01  1.99262043e-01  2.05182754e-01  2.08510186e-01
+  2.11295300e-01  2.16341952e-01  2.17834463e-01  2.31504515e-01
+  2.34325085e-01  2.36295500e-01  2.39256282e-01  2.46700178e-01
+  2.52840098e-01  2.60582328e-01  2.65409717e-01  2.69190959e-01
+  2.73618320e-01  2.76972597e-01  2.81192321e-01  2.83983388e-01
+  2.89237012e-01  2.90474429e-01  2.98592856e-01  3.03465096e-01
+  3.11084221e-01  3.14705967e-01  3.20353301e-01  3.22434437e-01
+  3.28434813e-01  3.30531508e-01  3.33490267e-01  3.39221713e-01
+  3.46619829e-01  3.50990158e-01  3.52610934e-01  3.57820014e-01
+  3.60970713e-01  3.65854599e-01  3.69908109e-01  3.74856558e-01
+  3.78982074e-01  3.85063008e-01  3.87558297e-01  3.91178658e-01
+  3.92542010e-01  4.01157944e-01  4.04890754e-01  4.08107429e-01
+  4.13617171e-01  4.14031565e-01  4.18156057e-01  4.22770465e-01
+  4.24483899e-01  4.28280454e-01  4.29847198e-01  4.30946074e-01
+  4.35382829e-01  4.41144086e-01  4.42206938e-01  4.43656132e-01
+  4.44515805e-01  4.48724266e-01  4.56439175e-01  4.60253900e-01
+  4.63317157e-01  4.66224165e-01  4.69240290e-01  4.71495400e-01
+  4.75723790e-01  4.81498961e-01  4.83352625e-01  4.85012575e-01
+  4.86347558e-01  4.88834831e-01  4.95562859e-01  4.96539539e-01
+  5.02868140e-01  5.03840449e-01  5.08562098e-01  5.10763562e-01
+  5.17938642e-01  5.19949097e-01  5.23053490e-01  5.29617129e-01
+  5.32693644e-01  5.39068623e-01  5.39638543e-01  5.43711625e-01
+  5.59400411e-01  5.65516387e-01  5.71774508e-01  5.77021339e-01
+  5.84135021e-01  5.87296552e-01  5.90250783e-01  5.99863287e-01
+  6.01639689e-01  6.10013099e-01  6.12100729e-01  6.16664213e-01
+  6.22346804e-01  6.30994470e-01  6.32625047e-01  6.36903455e-01
+  6.46354886e-01  6.51073758e-01  6.53551891e-01  6.62899825e-01
+  6.70507121e-01  6.79605425e-01  6.82063821e-01  6.93513113e-01
+  6.96266325e-01  7.03476122e-01  7.04750371e-01  7.13625884e-01
+  7.15473896e-01  7.22345767e-01  7.25906097e-01  7.41650004e-01
+  7.44165570e-01  7.50381370e-01  7.56398654e-01  7.64962200e-01
+  7.67244278e-01  7.78862245e-01  7.79630264e-01  7.83857311e-01
+  7.90740285e-01  7.99806098e-01  8.11768736e-01  8.12401518e-01
+  8.25830881e-01  8.31104683e-01  8.40919966e-01  8.54115146e-01
+  8.61566456e-01  8.74350587e-01  8.80192715e-01  8.81300729e-01
+  8.87246395e-01  8.87855569e-01  9.00763705e-01  9.02922486e-01
+  9.07921032e-01  9.20035952e-01  9.20639843e-01  9.30530404e-01
+  9.35197507e-01  9.49363844e-01  9.57009471e-01  9.63781906e-01
+  9.66797317e-01  9.70900862e-01  9.79100569e-01  9.82496621e-01
+  9.89044348e-01  9.93411319e-01  9.99468398e-01  1.01649903e+00
+  1.01857701e+00  1.03274719e+00  1.03444131e+00  1.03906530e+00
+  1.04010951e+00  1.04678995e+00  1.06295643e+00  1.06444948e+00
+  1.06802690e+00  1.07564789e+00  1.08350250e+00  1.09068320e+00
+  1.09447008e+00  1.10190475e+00  1.10664050e+00  1.12436419e+00
+  1.12638562e+00  1.13469832e+00  1.14247665e+00  1.14989058e+00
+  1.15660238e+00  1.16694276e+00  1.16951777e+00  1.17727890e+00
+  1.18840703e+00  1.20203794e+00  1.20268912e+00  1.20960291e+00
+  1.21829062e+00  1.22434704e+00  1.23360985e+00  1.23737762e+00
+  1.24214056e+00  1.24628172e+00  1.25851013e+00  1.26587684e+00
+  1.26888570e+00  1.28248907e+00  1.28523193e+00  1.29892310e+00
+  1.30324707e+00  1.30816966e+00  1.31670570e+00  1.32758742e+00
+  1.33433540e+00  1.34225973e+00  1.34786592e+00  1.35059884e+00
+  1.35973808e+00  1.36944701e+00  1.38495913e+00  1.39100214e+00
+  1.39944877e+00  1.42911187e+00  1.42968289e+00  1.43606706e+00
+  1.43977583e+00  1.45326767e+00  1.46357242e+00  1.47865758e+00
+  1.48031274e+00  1.49485141e+00  1.49620714e+00  1.50252161e+00
+  1.50942391e+00  1.51551208e+00  1.51756816e+00  1.52326905e+00
+  1.52603735e+00  1.53061262e+00  1.54252406e+00  1.54622258e+00
+  1.54831825e+00  1.55121195e+00  1.55507026e+00  1.56339912e+00
+  1.56624515e+00  1.56787621e+00  1.57823290e+00  1.58891171e+00
+  1.59282693e+00  1.59687186e+00  1.59745548e+00  1.60675863e+00
+  1.60948947e+00  1.61464036e+00  1.61919763e+00  1.62052709e+00
+  1.62439271e+00  1.63127084e+00  1.64278172e+00  1.64865203e+00
+  1.65329351e+00  1.65871146e+00  1.66336401e+00  1.66689177e+00
+  1.67316519e+00  1.67916959e+00  1.69151257e+00  1.69186826e+00
+  1.69720568e+00  1.71377978e+00  1.71720304e+00  1.73377142e+00
+  1.73794605e+00  1.74268996e+00  1.74727574e+00  1.75074146e+00
+  1.76000087e+00  1.76478303e+00  1.78400938e+00  1.78938137e+00
+  1.79429839e+00  1.80983865e+00  1.81845862e+00  1.82183391e+00
+  1.83190761e+00  1.83909968e+00  1.84939912e+00  1.87126882e+00
+  1.87935884e+00  1.88415900e+00  1.89046778e+00  1.89242905e+00
+  1.90381018e+00  1.90967736e+00  1.91885370e+00  1.93011700e+00
+  1.94158277e+00  1.94747302e+00  1.95482450e+00  1.95620953e+00
+  1.97759143e+00  1.98622937e+00  1.99343802e+00  1.99967619e+00
+  2.00381816e+00  2.01372743e+00  2.01488525e+00  2.02189301e+00
+  2.02997616e+00  2.03919673e+00  2.04446647e+00  2.05740315e+00
+  2.06559419e+00  2.06774957e+00  2.07624698e+00  2.08039306e+00
+  2.09033617e+00  2.10524645e+00  2.11018152e+00  2.11920630e+00
+  2.12903042e+00  2.13596567e+00  2.15087365e+00  2.16118996e+00
+  2.16587754e+00  2.17192407e+00  2.17939859e+00  2.18270158e+00
+  2.19036528e+00  2.19793887e+00  2.21912471e+00  2.23336158e+00
+  2.23660150e+00  2.24326945e+00  2.24889538e+00  2.25776026e+00
+  2.27172355e+00  2.28399001e+00  2.29471744e+00  2.29900901e+00
+  2.30699681e+00  2.30781199e+00  2.31195621e+00  2.31725647e+00
+  2.32394665e+00  2.33506556e+00  2.34136354e+00  2.35180157e+00
+  2.35386444e+00  2.36700661e+00  2.37406021e+00  2.38311441e+00
+  2.38389973e+00  2.38635360e+00  2.39321792e+00  2.39690330e+00
+  2.41324322e+00  2.42267619e+00  2.43029379e+00  2.43564038e+00
+  2.43794726e+00  2.45145791e+00  2.46696291e+00  2.47562695e+00
+  2.48320625e+00  2.49189110e+00  2.49477718e+00  2.49768281e+00
+  2.50156406e+00  2.51257722e+00  2.51498986e+00  2.51575942e+00
+  2.51989518e+00  2.53013091e+00  2.53296635e+00  2.53713728e+00
+  2.54310410e+00  2.55154302e+00  2.55794330e+00  2.56284947e+00
+  2.57668090e+00  2.58333852e+00  2.58712121e+00  2.58884458e+00
+  2.59358291e+00  2.59554479e+00  2.60336889e+00  2.60890544e+00
+  2.61398859e+00  2.62571597e+00  2.63267002e+00  2.63523945e+00
+  2.64016504e+00  2.64639888e+00  2.65717213e+00  2.66428744e+00
+  2.67473959e+00  2.67816781e+00  2.68309939e+00  2.69112530e+00
+  2.70347962e+00  2.70738529e+00  2.71246571e+00  2.71893273e+00
+  2.72903497e+00  2.73090378e+00  2.73945133e+00  2.74182519e+00
+  2.74371865e+00  2.75729834e+00  2.76286900e+00  2.77170431e+00
+  2.77677070e+00  2.77925207e+00  2.78399173e+00  2.79447247e+00
+  2.80776996e+00  2.81792963e+00  2.82445370e+00  2.83118544e+00
+  2.83397940e+00  2.83952428e+00  2.84531375e+00  2.85000612e+00
+  2.85389749e+00  2.85910494e+00  2.86856714e+00  2.87824284e+00
+  2.88924816e+00  2.89135047e+00  2.89724129e+00  2.90122884e+00
+  2.90941697e+00  2.91507270e+00  2.91928334e+00  2.92586101e+00
+  2.94097976e+00  2.94422287e+00  2.95741278e+00  2.96322196e+00
+  2.97386102e+00  2.98592577e+00  2.99386185e+00  2.99842861e+00
+  3.00650365e+00  3.02255345e+00  3.03033672e+00  3.03650315e+00
+  3.03831807e+00  3.04151268e+00  3.05314021e+00  3.06013823e+00
+  3.06507140e+00  3.07174605e+00  3.07324065e+00  3.08222002e+00
+  3.09001950e+00  3.09258245e+00  3.09820025e+00  3.10647940e+00
+  3.10946224e+00  3.12196679e+00  3.13060930e+00  3.13459796e+00
+  3.14118439e+00  3.14536797e+00  3.15252775e+00  3.16188468e+00
+  3.16313762e+00  3.16937973e+00  3.18209424e+00  3.18399236e+00
+  3.19048882e+00  3.19741875e+00  3.20199020e+00  3.20312931e+00
+  3.20801992e+00  3.21202119e+00  3.21571901e+00  3.22099000e+00
+  3.22720611e+00  3.24141300e+00  3.24486353e+00  3.24962710e+00
+  3.25311793e+00  3.25691439e+00  3.26139930e+00  3.26617661e+00
+  3.26910638e+00  3.27553090e+00  3.28038599e+00  3.28309585e+00
+  3.28848757e+00  3.29476513e+00  3.29954304e+00  3.30393757e+00
+  3.31552988e+00  3.32049211e+00  3.32685577e+00  3.32913829e+00
+  3.33691983e+00  3.34398150e+00  3.34529540e+00  3.34762317e+00
+  3.35555123e+00  3.35973876e+00  3.36112568e+00  3.36839284e+00
+  3.37372390e+00  3.38140050e+00  3.38877314e+00  3.39275168e+00
+  3.39553265e+00  3.40535535e+00  3.41059890e+00  3.41327063e+00
+  3.42212633e+00  3.43060397e+00  3.43297961e+00  3.44677326e+00
+  3.45410817e+00  3.45711297e+00  3.46111347e+00  3.46905466e+00
+  3.48827282e+00  3.49643197e+00  3.49965950e+00  3.50720457e+00
+  3.51263566e+00  3.51714860e+00  3.52184705e+00  3.52559223e+00
+  3.54261928e+00  3.54875124e+00  3.55386105e+00  3.56486169e+00
+  3.57343576e+00  3.58527707e+00  3.59167872e+00  3.59863812e+00
+  3.60412920e+00  3.61188523e+00  3.61808283e+00  3.62162657e+00
+  3.63556025e+00  3.64729940e+00  3.65307472e+00  3.66055368e+00
+  3.67909979e+00  3.68391383e+00  3.69137994e+00  3.70166526e+00
+  3.70821148e+00  3.71438993e+00  3.72755397e+00  3.73796013e+00
+  3.75086841e+00  3.75346553e+00  3.75658419e+00  3.77449268e+00
+  3.78167464e+00  3.78636654e+00  3.78842810e+00  3.79917231e+00
+  3.82594140e+00  3.82819558e+00  3.83858041e+00  3.84570979e+00
+  3.85578654e+00  3.87033947e+00  3.88715882e+00  3.88943940e+00
+  3.91133758e+00  3.91713431e+00  3.92174283e+00  3.92981050e+00
+  3.93970374e+00  3.95068627e+00  3.96117393e+00  3.96595985e+00
+  3.97158580e+00  3.98657292e+00  4.01337017e+00  4.01633098e+00
+  4.02004202e+00  4.04266698e+00  4.04863348e+00  4.07253721e+00
+  4.08674829e+00  4.09546934e+00  4.10782642e+00  4.12743075e+00
+  4.13313197e+00  4.13455226e+00  4.14127071e+00  4.16561183e+00
+  4.16904363e+00  4.18007690e+00  4.18717847e+00  4.21722021e+00
+  4.22142467e+00  4.23446245e+00  4.23733028e+00  4.25230957e+00
+  4.25807384e+00  4.26911489e+00  4.27231721e+00  4.27837310e+00
+  4.29199350e+00  4.29945868e+00  4.30440538e+00  4.33025323e+00
+  4.34106970e+00  4.34567510e+00  4.35731987e+00  4.38121894e+00
+  4.39593308e+00  4.40342084e+00  4.41091337e+00  4.42177525e+00
+  4.43392342e+00  4.44136478e+00  4.45140342e+00  4.45916919e+00
+  4.47299344e+00  4.47606706e+00  4.48491073e+00  4.49109499e+00
+  4.50157959e+00  4.52650060e+00  4.53255576e+00  4.54033695e+00
+  4.54763789e+00  4.55027812e+00  4.58919119e+00  4.59491269e+00
+  4.61442373e+00  4.62857382e+00  4.64054548e+00  4.65412687e+00
+  4.67531984e+00  4.69414359e+00  4.70289895e+00  4.72777777e+00
+  4.73226920e+00  4.75308754e+00  4.79229818e+00  4.79266460e+00
+  4.82920778e+00  4.84986221e+00  4.86790805e+00  4.89004277e+00
+  4.90305199e+00  4.91959715e+00  4.95487864e+00  4.96567788e+00
+  4.99289569e+00  5.00822852e+00  5.05050018e+00  5.07938015e+00
+  5.10364435e+00  5.12676218e+00  5.12796668e+00  5.14022284e+00
+  5.17550993e+00  5.21080282e+00  5.21678275e+00  5.23985247e+00
+  5.26706919e+00  5.29532029e+00  5.32470560e+00  5.36195400e+00
+  5.45575709e+00  5.53861915e+00  5.56011663e+00  5.57516216e+00
+  5.63163213e+00  5.70974108e+00  6.07449561e+00  6.33517059e+00
+  6.37810533e+00  6.45759561e+00  6.50423239e+00  6.82289862e+00
+  6.99554848e+00  7.07934198e+00  2.23805349e+01  2.24472498e+01
+  2.24496207e+01  2.24645473e+01  2.24952107e+01  2.25196165e+01
+  2.25724313e+01  2.25843420e+01  2.26241444e+01  2.26437284e+01
+  2.26586140e+01  2.27175101e+01  2.27626461e+01  2.27913571e+01
+  2.28392815e+01  2.28651178e+01  2.29087094e+01  2.30732024e+01
+  2.31468226e+01  2.33059789e+01  4.39459112e+01]
+nelec by numeric integration = 156.0001245577117
+    CPU time for vxc     97.44 sec, wall time      6.90 sec
+    CPU time for df vj and vk    156.59 sec, wall time     12.74 sec
+E1 = -4169.20904959932  Ecoul = 1923.5259052648814  Exc = -126.45331291993786
+cycle= 3 E= -853.422822016565  delta_E= -2.24e-10  |g|= 1.72e-06  |ddm|= 2.84e-05
+    CPU time for cycle= 3    257.20 sec, wall time     20.03 sec
+  HOMO = -0.210305021426388  LUMO = -0.0955330236338575
+  mo_energy =
+[-1.91846162e+01 -1.02970307e+01 -1.02692556e+01 -1.02598923e+01
+ -1.02509181e+01 -1.02492607e+01 -1.02439981e+01 -1.02431664e+01
+ -1.02416059e+01 -1.02398316e+01 -1.02372861e+01 -1.02369315e+01
+ -1.02363858e+01 -1.02351911e+01 -1.02322386e+01 -1.02306360e+01
+ -1.02246950e+01 -1.02232503e+01 -1.02227281e+01 -1.02198906e+01
+ -1.02157442e+01 -1.04897477e+00 -8.86039704e-01 -8.73352121e-01
+ -8.56536142e-01 -8.18406317e-01 -8.13936114e-01 -7.90759436e-01
+ -7.55845195e-01 -7.37644837e-01 -7.23706376e-01 -7.10843365e-01
+ -7.07732938e-01 -6.99355222e-01 -6.70872767e-01 -6.33161908e-01
+ -6.04663312e-01 -5.88574277e-01 -5.70554619e-01 -5.60621475e-01
+ -5.49271948e-01 -5.26647786e-01 -5.06414499e-01 -5.01412553e-01
+ -4.88881287e-01 -4.77164168e-01 -4.69735290e-01 -4.60250786e-01
+ -4.52372512e-01 -4.48482672e-01 -4.44459290e-01 -4.43958447e-01
+ -4.42027854e-01 -4.28418541e-01 -4.21892199e-01 -4.17593133e-01
+ -4.15956320e-01 -4.13026551e-01 -4.06664062e-01 -4.02283258e-01
+ -3.94866546e-01 -3.90265259e-01 -3.89207427e-01 -3.85647948e-01
+ -3.76028582e-01 -3.69133522e-01 -3.66485546e-01 -3.61794492e-01
+ -3.59873332e-01 -3.57068428e-01 -3.36645110e-01 -3.30388097e-01
+ -3.20937310e-01 -3.13369728e-01 -2.90292863e-01 -2.58207760e-01
+ -2.52869596e-01 -2.10305021e-01 -9.55330236e-02 -3.48729787e-02
+  1.35080378e-02  2.68606927e-02  3.50925277e-02  4.26970566e-02
+  4.70112536e-02  5.13178279e-02  5.92285818e-02  6.47389353e-02
+  6.78061149e-02  7.06118620e-02  7.36722298e-02  8.09516074e-02
+  8.54294686e-02  8.70435431e-02  8.92452717e-02  9.17617606e-02
+  1.01235837e-01  1.11056091e-01  1.16098081e-01  1.20694533e-01
+  1.23201182e-01  1.25138383e-01  1.30526909e-01  1.33786204e-01
+  1.37747361e-01  1.41551816e-01  1.42976610e-01  1.46155156e-01
+  1.49531279e-01  1.50608588e-01  1.53736007e-01  1.59513306e-01
+  1.65887914e-01  1.71615629e-01  1.74169931e-01  1.79410696e-01
+  1.83893194e-01  1.87391226e-01  1.89011039e-01  1.92365985e-01
+  1.96046512e-01  1.99262032e-01  2.05182727e-01  2.08510170e-01
+  2.11295283e-01  2.16341944e-01  2.17834437e-01  2.31504497e-01
+  2.34325088e-01  2.36295488e-01  2.39256272e-01  2.46700170e-01
+  2.52840112e-01  2.60582310e-01  2.65409695e-01  2.69190946e-01
+  2.73618298e-01  2.76972580e-01  2.81192300e-01  2.83983380e-01
+  2.89236992e-01  2.90474415e-01  2.98592837e-01  3.03465074e-01
+  3.11084204e-01  3.14705934e-01  3.20353283e-01  3.22434428e-01
+  3.28434794e-01  3.30531502e-01  3.33490250e-01  3.39221685e-01
+  3.46619817e-01  3.50990145e-01  3.52610937e-01  3.57820002e-01
+  3.60970702e-01  3.65854591e-01  3.69908096e-01  3.74856530e-01
+  3.78982057e-01  3.85062967e-01  3.87558292e-01  3.91178646e-01
+  3.92542007e-01  4.01157939e-01  4.04890734e-01  4.08107427e-01
+  4.13617144e-01  4.14031554e-01  4.18156036e-01  4.22770446e-01
+  4.24483891e-01  4.28280446e-01  4.29847192e-01  4.30946061e-01
+  4.35382814e-01  4.41144077e-01  4.42206925e-01  4.43656104e-01
+  4.44515781e-01  4.48724267e-01  4.56439162e-01  4.60253887e-01
+  4.63317139e-01  4.66224159e-01  4.69240273e-01  4.71495394e-01
+  4.75723783e-01  4.81498944e-01  4.83352614e-01  4.85012565e-01
+  4.86347546e-01  4.88834812e-01  4.95562837e-01  4.96539536e-01
+  5.02868121e-01  5.03840434e-01  5.08562081e-01  5.10763549e-01
+  5.17938623e-01  5.19949076e-01  5.23053473e-01  5.29617109e-01
+  5.32693629e-01  5.39068600e-01  5.39638521e-01  5.43711603e-01
+  5.59400395e-01  5.65516360e-01  5.71774483e-01  5.77021311e-01
+  5.84134994e-01  5.87296540e-01  5.90250763e-01  5.99863273e-01
+  6.01639675e-01  6.10013103e-01  6.12100718e-01  6.16664198e-01
+  6.22346788e-01  6.30994462e-01  6.32625021e-01  6.36903445e-01
+  6.46354871e-01  6.51073729e-01  6.53551882e-01  6.62899814e-01
+  6.70507091e-01  6.79605396e-01  6.82063808e-01  6.93513083e-01
+  6.96266320e-01  7.03476097e-01  7.04750336e-01  7.13625858e-01
+  7.15473875e-01  7.22345729e-01  7.25906095e-01  7.41649986e-01
+  7.44165539e-01  7.50381352e-01  7.56398630e-01  7.64962184e-01
+  7.67244255e-01  7.78862217e-01  7.79630241e-01  7.83857293e-01
+  7.90740274e-01  7.99806083e-01  8.11768711e-01  8.12401498e-01
+  8.25830868e-01  8.31104658e-01  8.40919949e-01  8.54115122e-01
+  8.61566433e-01  8.74350561e-01  8.80192712e-01  8.81300711e-01
+  8.87246380e-01  8.87855563e-01  9.00763682e-01  9.02922473e-01
+  9.07921014e-01  9.20035936e-01  9.20639833e-01  9.30530380e-01
+  9.35197480e-01  9.49363827e-01  9.57009448e-01  9.63781876e-01
+  9.66797319e-01  9.70900853e-01  9.79100539e-01  9.82496602e-01
+  9.89044320e-01  9.93411299e-01  9.99468371e-01  1.01649900e+00
+  1.01857699e+00  1.03274717e+00  1.03444128e+00  1.03906531e+00
+  1.04010948e+00  1.04678993e+00  1.06295640e+00  1.06444947e+00
+  1.06802689e+00  1.07564786e+00  1.08350247e+00  1.09068318e+00
+  1.09447005e+00  1.10190473e+00  1.10664048e+00  1.12436417e+00
+  1.12638561e+00  1.13469831e+00  1.14247663e+00  1.14989055e+00
+  1.15660235e+00  1.16694273e+00  1.16951776e+00  1.17727887e+00
+  1.18840702e+00  1.20203792e+00  1.20268910e+00  1.20960289e+00
+  1.21829060e+00  1.22434703e+00  1.23360983e+00  1.23737760e+00
+  1.24214056e+00  1.24628169e+00  1.25851011e+00  1.26587682e+00
+  1.26888569e+00  1.28248904e+00  1.28523191e+00  1.29892307e+00
+  1.30324704e+00  1.30816964e+00  1.31670568e+00  1.32758740e+00
+  1.33433541e+00  1.34225971e+00  1.34786590e+00  1.35059882e+00
+  1.35973808e+00  1.36944696e+00  1.38495910e+00  1.39100211e+00
+  1.39944875e+00  1.42911186e+00  1.42968286e+00  1.43606704e+00
+  1.43977583e+00  1.45326764e+00  1.46357236e+00  1.47865756e+00
+  1.48031272e+00  1.49485140e+00  1.49620711e+00  1.50252159e+00
+  1.50942389e+00  1.51551209e+00  1.51756815e+00  1.52326903e+00
+  1.52603735e+00  1.53061261e+00  1.54252402e+00  1.54622256e+00
+  1.54831822e+00  1.55121193e+00  1.55507023e+00  1.56339909e+00
+  1.56624512e+00  1.56787618e+00  1.57823286e+00  1.58891170e+00
+  1.59282691e+00  1.59687187e+00  1.59745546e+00  1.60675862e+00
+  1.60948944e+00  1.61464034e+00  1.61919763e+00  1.62052706e+00
+  1.62439269e+00  1.63127082e+00  1.64278171e+00  1.64865202e+00
+  1.65329350e+00  1.65871144e+00  1.66336398e+00  1.66689173e+00
+  1.67316517e+00  1.67916956e+00  1.69151253e+00  1.69186820e+00
+  1.69720564e+00  1.71377976e+00  1.71720302e+00  1.73377139e+00
+  1.73794603e+00  1.74268996e+00  1.74727570e+00  1.75074145e+00
+  1.76000086e+00  1.76478300e+00  1.78400937e+00  1.78938134e+00
+  1.79429836e+00  1.80983861e+00  1.81845859e+00  1.82183387e+00
+  1.83190761e+00  1.83909964e+00  1.84939909e+00  1.87126879e+00
+  1.87935881e+00  1.88415899e+00  1.89046777e+00  1.89242911e+00
+  1.90381015e+00  1.90967732e+00  1.91885366e+00  1.93011696e+00
+  1.94158273e+00  1.94747296e+00  1.95482448e+00  1.95620949e+00
+  1.97759144e+00  1.98622935e+00  1.99343801e+00  1.99967617e+00
+  2.00381816e+00  2.01372744e+00  2.01488525e+00  2.02189298e+00
+  2.02997615e+00  2.03919671e+00  2.04446645e+00  2.05740312e+00
+  2.06559415e+00  2.06774956e+00  2.07624696e+00  2.08039304e+00
+  2.09033614e+00  2.10524643e+00  2.11018149e+00  2.11920629e+00
+  2.12903041e+00  2.13596566e+00  2.15087362e+00  2.16118992e+00
+  2.16587749e+00  2.17192405e+00  2.17939858e+00  2.18270158e+00
+  2.19036526e+00  2.19793886e+00  2.21912467e+00  2.23336156e+00
+  2.23660145e+00  2.24326944e+00  2.24889535e+00  2.25776022e+00
+  2.27172352e+00  2.28398997e+00  2.29471742e+00  2.29900899e+00
+  2.30699681e+00  2.30781201e+00  2.31195620e+00  2.31725642e+00
+  2.32394662e+00  2.33506553e+00  2.34136353e+00  2.35180156e+00
+  2.35386442e+00  2.36700661e+00  2.37406019e+00  2.38311438e+00
+  2.38389971e+00  2.38635359e+00  2.39321788e+00  2.39690327e+00
+  2.41324321e+00  2.42267619e+00  2.43029378e+00  2.43564037e+00
+  2.43794724e+00  2.45145787e+00  2.46696289e+00  2.47562693e+00
+  2.48320621e+00  2.49189109e+00  2.49477717e+00  2.49768282e+00
+  2.50156407e+00  2.51257719e+00  2.51498981e+00  2.51575940e+00
+  2.51989516e+00  2.53013090e+00  2.53296635e+00  2.53713729e+00
+  2.54310410e+00  2.55154299e+00  2.55794327e+00  2.56284944e+00
+  2.57668085e+00  2.58333850e+00  2.58712119e+00  2.58884456e+00
+  2.59358288e+00  2.59554476e+00  2.60336887e+00  2.60890541e+00
+  2.61398857e+00  2.62571593e+00  2.63267001e+00  2.63523943e+00
+  2.64016504e+00  2.64639885e+00  2.65717210e+00  2.66428742e+00
+  2.67473956e+00  2.67816779e+00  2.68309937e+00  2.69112529e+00
+  2.70347959e+00  2.70738536e+00  2.71246569e+00  2.71893271e+00
+  2.72903495e+00  2.73090374e+00  2.73945130e+00  2.74182517e+00
+  2.74371862e+00  2.75729832e+00  2.76286895e+00  2.77170429e+00
+  2.77677070e+00  2.77925204e+00  2.78399171e+00  2.79447245e+00
+  2.80776991e+00  2.81792960e+00  2.82445369e+00  2.83118540e+00
+  2.83397937e+00  2.83952424e+00  2.84531374e+00  2.85000610e+00
+  2.85389748e+00  2.85910490e+00  2.86856710e+00  2.87824284e+00
+  2.88924814e+00  2.89135045e+00  2.89724126e+00  2.90122881e+00
+  2.90941694e+00  2.91507266e+00  2.91928330e+00  2.92586096e+00
+  2.94097973e+00  2.94422284e+00  2.95741274e+00  2.96322194e+00
+  2.97386100e+00  2.98592575e+00  2.99386181e+00  2.99842856e+00
+  3.00650363e+00  3.02255342e+00  3.03033670e+00  3.03650313e+00
+  3.03831808e+00  3.04151270e+00  3.05314017e+00  3.06013820e+00
+  3.06507136e+00  3.07174602e+00  3.07324060e+00  3.08221998e+00
+  3.09001949e+00  3.09258243e+00  3.09820024e+00  3.10647935e+00
+  3.10946221e+00  3.12196680e+00  3.13060928e+00  3.13459791e+00
+  3.14118434e+00  3.14536795e+00  3.15252768e+00  3.16188466e+00
+  3.16313762e+00  3.16937972e+00  3.18209421e+00  3.18399234e+00
+  3.19048881e+00  3.19741872e+00  3.20199020e+00  3.20312927e+00
+  3.20801989e+00  3.21202117e+00  3.21571896e+00  3.22098997e+00
+  3.22720608e+00  3.24141296e+00  3.24486350e+00  3.24962708e+00
+  3.25311792e+00  3.25691436e+00  3.26139930e+00  3.26617660e+00
+  3.26910637e+00  3.27553088e+00  3.28038596e+00  3.28309583e+00
+  3.28848753e+00  3.29476510e+00  3.29954305e+00  3.30393755e+00
+  3.31552984e+00  3.32049206e+00  3.32685574e+00  3.32913827e+00
+  3.33691979e+00  3.34398146e+00  3.34529539e+00  3.34762314e+00
+  3.35555120e+00  3.35973877e+00  3.36112567e+00  3.36839281e+00
+  3.37372386e+00  3.38140048e+00  3.38877311e+00  3.39275165e+00
+  3.39553262e+00  3.40535532e+00  3.41059887e+00  3.41327060e+00
+  3.42212630e+00  3.43060394e+00  3.43297957e+00  3.44677324e+00
+  3.45410815e+00  3.45711295e+00  3.46111345e+00  3.46905465e+00
+  3.48827280e+00  3.49643194e+00  3.49965947e+00  3.50720455e+00
+  3.51263563e+00  3.51714857e+00  3.52184702e+00  3.52559222e+00
+  3.54261924e+00  3.54875122e+00  3.55386103e+00  3.56486168e+00
+  3.57343573e+00  3.58527706e+00  3.59167869e+00  3.59863810e+00
+  3.60412917e+00  3.61188519e+00  3.61808280e+00  3.62162653e+00
+  3.63556021e+00  3.64729937e+00  3.65307469e+00  3.66055364e+00
+  3.67909976e+00  3.68391381e+00  3.69137990e+00  3.70166522e+00
+  3.70821147e+00  3.71438991e+00  3.72755397e+00  3.73796010e+00
+  3.75086838e+00  3.75346550e+00  3.75658415e+00  3.77449265e+00
+  3.78167463e+00  3.78636651e+00  3.78842805e+00  3.79917228e+00
+  3.82594137e+00  3.82819556e+00  3.83858036e+00  3.84570978e+00
+  3.85578650e+00  3.87033943e+00  3.88715879e+00  3.88943943e+00
+  3.91133755e+00  3.91713435e+00  3.92174280e+00  3.92981046e+00
+  3.93970368e+00  3.95068625e+00  3.96117393e+00  3.96595982e+00
+  3.97158575e+00  3.98657290e+00  4.01337014e+00  4.01633097e+00
+  4.02004200e+00  4.04266696e+00  4.04863345e+00  4.07253716e+00
+  4.08674827e+00  4.09546931e+00  4.10782639e+00  4.12743073e+00
+  4.13313195e+00  4.13455224e+00  4.14127068e+00  4.16561181e+00
+  4.16904359e+00  4.18007690e+00  4.18717847e+00  4.21722018e+00
+  4.22142465e+00  4.23446239e+00  4.23733028e+00  4.25230952e+00
+  4.25807381e+00  4.26911483e+00  4.27231717e+00  4.27837306e+00
+  4.29199348e+00  4.29945862e+00  4.30440537e+00  4.33025324e+00
+  4.34106967e+00  4.34567509e+00  4.35731980e+00  4.38121892e+00
+  4.39593305e+00  4.40342084e+00  4.41091333e+00  4.42177522e+00
+  4.43392340e+00  4.44136475e+00  4.45140343e+00  4.45916921e+00
+  4.47299341e+00  4.47606703e+00  4.48491071e+00  4.49109498e+00
+  4.50157957e+00  4.52650058e+00  4.53255572e+00  4.54033692e+00
+  4.54763785e+00  4.55027809e+00  4.58919118e+00  4.59491265e+00
+  4.61442372e+00  4.62857379e+00  4.64054545e+00  4.65412683e+00
+  4.67531980e+00  4.69414354e+00  4.70289893e+00  4.72777774e+00
+  4.73226915e+00  4.75308751e+00  4.79229817e+00  4.79266458e+00
+  4.82920774e+00  4.84986218e+00  4.86790802e+00  4.89004274e+00
+  4.90305196e+00  4.91959717e+00  4.95487859e+00  4.96567782e+00
+  4.99289567e+00  5.00822849e+00  5.05050020e+00  5.07938013e+00
+  5.10364432e+00  5.12676217e+00  5.12796668e+00  5.14022279e+00
+  5.17550989e+00  5.21080275e+00  5.21678263e+00  5.23985238e+00
+  5.26706911e+00  5.29532022e+00  5.32470559e+00  5.36195397e+00
+  5.45575709e+00  5.53861910e+00  5.56011651e+00  5.57516212e+00
+  5.63163205e+00  5.70974099e+00  6.07449547e+00  6.33517044e+00
+  6.37810518e+00  6.45759548e+00  6.50423224e+00  6.82289848e+00
+  6.99554834e+00  7.07934183e+00  2.23805348e+01  2.24472498e+01
+  2.24496207e+01  2.24645472e+01  2.24952106e+01  2.25196165e+01
+  2.25724313e+01  2.25843420e+01  2.26241443e+01  2.26437283e+01
+  2.26586140e+01  2.27175100e+01  2.27626460e+01  2.27913571e+01
+  2.28392815e+01  2.28651177e+01  2.29087093e+01  2.30732024e+01
+  2.31468225e+01  2.33059789e+01  4.39459110e+01]
+nelec by numeric integration = 156.00012455769715
+    CPU time for vxc     91.32 sec, wall time      6.77 sec
+    CPU time for df vj and vk    154.61 sec, wall time     12.97 sec
+E1 = -4169.209056055683  Ecoul = 1923.5259121992278  Exc = -126.45331339792362
+cycle= 4 E= -853.422822016567  delta_E= -2.27e-12  |g|= 2.28e-07  |ddm|= 2.29e-06
+    CPU time for cycle= 4    249.25 sec, wall time     20.13 sec
+  HOMO = -0.210305045461408  LUMO = -0.0955330538647592
+  mo_energy =
+[-1.91846162e+01 -1.02970309e+01 -1.02692557e+01 -1.02598923e+01
+ -1.02509182e+01 -1.02492607e+01 -1.02439982e+01 -1.02431665e+01
+ -1.02416059e+01 -1.02398317e+01 -1.02372861e+01 -1.02369316e+01
+ -1.02363858e+01 -1.02351911e+01 -1.02322386e+01 -1.02306360e+01
+ -1.02246950e+01 -1.02232503e+01 -1.02227282e+01 -1.02198906e+01
+ -1.02157442e+01 -1.04897480e+00 -8.86039719e-01 -8.73352166e-01
+ -8.56536174e-01 -8.18406338e-01 -8.13936138e-01 -7.90759466e-01
+ -7.55845214e-01 -7.37644873e-01 -7.23706397e-01 -7.10843387e-01
+ -7.07732946e-01 -6.99355240e-01 -6.70872800e-01 -6.33161932e-01
+ -6.04663335e-01 -5.88574294e-01 -5.70554645e-01 -5.60621502e-01
+ -5.49271967e-01 -5.26647802e-01 -5.06414518e-01 -5.01412586e-01
+ -4.88881312e-01 -4.77164190e-01 -4.69735309e-01 -4.60250806e-01
+ -4.52372530e-01 -4.48482708e-01 -4.44459299e-01 -4.43958455e-01
+ -4.42027869e-01 -4.28418560e-01 -4.21892224e-01 -4.17593156e-01
+ -4.15956337e-01 -4.13026566e-01 -4.06664077e-01 -4.02283283e-01
+ -3.94866574e-01 -3.90265278e-01 -3.89207449e-01 -3.85647962e-01
+ -3.76028606e-01 -3.69133541e-01 -3.66485568e-01 -3.61794507e-01
+ -3.59873346e-01 -3.57068456e-01 -3.36645122e-01 -3.30388112e-01
+ -3.20937328e-01 -3.13369743e-01 -2.90292888e-01 -2.58207775e-01
+ -2.52869618e-01 -2.10305045e-01 -9.55330539e-02 -3.48730084e-02
+  1.35080127e-02  2.68606909e-02  3.50925205e-02  4.26970397e-02
+  4.70112428e-02  5.13178198e-02  5.92285757e-02  6.47389219e-02
+  6.78060838e-02  7.06118574e-02  7.36722223e-02  8.09515956e-02
+  8.54294646e-02  8.70435377e-02  8.92452686e-02  9.17617579e-02
+  1.01235826e-01  1.11056085e-01  1.16098074e-01  1.20694521e-01
+  1.23201173e-01  1.25138372e-01  1.30526904e-01  1.33786199e-01
+  1.37747350e-01  1.41551811e-01  1.42976605e-01  1.46155147e-01
+  1.49531269e-01  1.50608582e-01  1.53736001e-01  1.59513304e-01
+  1.65887909e-01  1.71615623e-01  1.74169927e-01  1.79410687e-01
+  1.83893184e-01  1.87391211e-01  1.89011032e-01  1.92365970e-01
+  1.96046488e-01  1.99262024e-01  2.05182720e-01  2.08510160e-01
+  2.11295274e-01  2.16341933e-01  2.17834424e-01  2.31504479e-01
+  2.34325071e-01  2.36295479e-01  2.39256258e-01  2.46700158e-01
+  2.52840088e-01  2.60582301e-01  2.65409684e-01  2.69190929e-01
+  2.73618287e-01  2.76972569e-01  2.81192288e-01  2.83983371e-01
+  2.89236981e-01  2.90474401e-01  2.98592831e-01  3.03465063e-01
+  3.11084190e-01  3.14705927e-01  3.20353274e-01  3.22434415e-01
+  3.28434780e-01  3.30531480e-01  3.33490236e-01  3.39221676e-01
+  3.46619806e-01  3.50990132e-01  3.52610921e-01  3.57819990e-01
+  3.60970690e-01  3.65854574e-01  3.69908079e-01  3.74856517e-01
+  3.78982048e-01  3.85062949e-01  3.87558278e-01  3.91178637e-01
+  3.92541995e-01  4.01157924e-01  4.04890726e-01  4.08107414e-01
+  4.13617135e-01  4.14031545e-01  4.18156025e-01  4.22770440e-01
+  4.24483882e-01  4.28280431e-01  4.29847179e-01  4.30946045e-01
+  4.35382805e-01  4.41144063e-01  4.42206915e-01  4.43656097e-01
+  4.44515775e-01  4.48724256e-01  4.56439151e-01  4.60253877e-01
+  4.63317128e-01  4.66224144e-01  4.69240263e-01  4.71495384e-01
+  4.75723765e-01  4.81498938e-01  4.83352603e-01  4.85012552e-01
+  4.86347534e-01  4.88834803e-01  4.95562829e-01  4.96539516e-01
+  5.02868108e-01  5.03840418e-01  5.08562070e-01  5.10763538e-01
+  5.17938610e-01  5.19949070e-01  5.23053465e-01  5.29617091e-01
+  5.32693615e-01  5.39068592e-01  5.39638511e-01  5.43711594e-01
+  5.59400381e-01  5.65516352e-01  5.71774475e-01  5.77021299e-01
+  5.84134984e-01  5.87296527e-01  5.90250749e-01  5.99863260e-01
+  6.01639662e-01  6.10013080e-01  6.12100703e-01  6.16664180e-01
+  6.22346773e-01  6.30994445e-01  6.32625007e-01  6.36903430e-01
+  6.46354854e-01  6.51073717e-01  6.53551865e-01  6.62899798e-01
+  6.70507079e-01  6.79605379e-01  6.82063791e-01  6.93513072e-01
+  6.96266304e-01  7.03476087e-01  7.04750318e-01  7.13625847e-01
+  7.15473859e-01  7.22345719e-01  7.25906073e-01  7.41649973e-01
+  7.44165522e-01  7.50381329e-01  7.56398621e-01  7.64962168e-01
+  7.67244237e-01  7.78862205e-01  7.79630232e-01  7.83857280e-01
+  7.90740262e-01  7.99806067e-01  8.11768700e-01  8.12401488e-01
+  8.25830853e-01  8.31104646e-01  8.40919934e-01  8.54115113e-01
+  8.61566420e-01  8.74350545e-01  8.80192689e-01  8.81300692e-01
+  8.87246365e-01  8.87855549e-01  9.00763669e-01  9.02922459e-01
+  9.07920999e-01  9.20035921e-01  9.20639814e-01  9.30530367e-01
+  9.35197467e-01  9.49363808e-01  9.57009436e-01  9.63781860e-01
+  9.66797298e-01  9.70900833e-01  9.79100532e-01  9.82496587e-01
+  9.89044304e-01  9.93411278e-01  9.99468359e-01  1.01649899e+00
+  1.01857698e+00  1.03274716e+00  1.03444127e+00  1.03906528e+00
+  1.04010947e+00  1.04678991e+00  1.06295639e+00  1.06444945e+00
+  1.06802687e+00  1.07564786e+00  1.08350246e+00  1.09068317e+00
+  1.09447004e+00  1.10190471e+00  1.10664046e+00  1.12436415e+00
+  1.12638559e+00  1.13469829e+00  1.14247661e+00  1.14989054e+00
+  1.15660233e+00  1.16694272e+00  1.16951774e+00  1.17727886e+00
+  1.18840700e+00  1.20203791e+00  1.20268908e+00  1.20960288e+00
+  1.21829059e+00  1.22434701e+00  1.23360982e+00  1.23737758e+00
+  1.24214054e+00  1.24628167e+00  1.25851009e+00  1.26587681e+00
+  1.26888567e+00  1.28248902e+00  1.28523190e+00  1.29892306e+00
+  1.30324702e+00  1.30816962e+00  1.31670566e+00  1.32758738e+00
+  1.33433538e+00  1.34225969e+00  1.34786588e+00  1.35059880e+00
+  1.35973806e+00  1.36944695e+00  1.38495908e+00  1.39100210e+00
+  1.39944874e+00  1.42911181e+00  1.42968285e+00  1.43606702e+00
+  1.43977580e+00  1.45326762e+00  1.46357232e+00  1.47865754e+00
+  1.48031270e+00  1.49485138e+00  1.49620709e+00  1.50252157e+00
+  1.50942388e+00  1.51551207e+00  1.51756813e+00  1.52326902e+00
+  1.52603734e+00  1.53061260e+00  1.54252401e+00  1.54622254e+00
+  1.54831820e+00  1.55121191e+00  1.55507022e+00  1.56339907e+00
+  1.56624511e+00  1.56787616e+00  1.57823285e+00  1.58891168e+00
+  1.59282690e+00  1.59687184e+00  1.59745544e+00  1.60675861e+00
+  1.60948943e+00  1.61464033e+00  1.61919761e+00  1.62052704e+00
+  1.62439266e+00  1.63127081e+00  1.64278170e+00  1.64865201e+00
+  1.65329347e+00  1.65871143e+00  1.66336397e+00  1.66689173e+00
+  1.67316516e+00  1.67916954e+00  1.69151251e+00  1.69186818e+00
+  1.69720563e+00  1.71377974e+00  1.71720300e+00  1.73377137e+00
+  1.73794601e+00  1.74268994e+00  1.74727569e+00  1.75074142e+00
+  1.76000084e+00  1.76478298e+00  1.78400935e+00  1.78938132e+00
+  1.79429835e+00  1.80983860e+00  1.81845857e+00  1.82183386e+00
+  1.83190758e+00  1.83909962e+00  1.84939907e+00  1.87126877e+00
+  1.87935880e+00  1.88415898e+00  1.89046775e+00  1.89242907e+00
+  1.90381013e+00  1.90967731e+00  1.91885364e+00  1.93011695e+00
+  1.94158272e+00  1.94747295e+00  1.95482446e+00  1.95620948e+00
+  1.97759142e+00  1.98622934e+00  1.99343799e+00  1.99967615e+00
+  2.00381813e+00  2.01372742e+00  2.01488523e+00  2.02189297e+00
+  2.02997612e+00  2.03919669e+00  2.04446643e+00  2.05740310e+00
+  2.06559413e+00  2.06774955e+00  2.07624694e+00  2.08039303e+00
+  2.09033612e+00  2.10524641e+00  2.11018148e+00  2.11920627e+00
+  2.12903039e+00  2.13596565e+00  2.15087360e+00  2.16118990e+00
+  2.16587747e+00  2.17192403e+00  2.17939856e+00  2.18270156e+00
+  2.19036524e+00  2.19793884e+00  2.21912466e+00  2.23336154e+00
+  2.23660143e+00  2.24326942e+00  2.24889534e+00  2.25776021e+00
+  2.27172351e+00  2.28398996e+00  2.29471741e+00  2.29900898e+00
+  2.30699679e+00  2.30781198e+00  2.31195618e+00  2.31725642e+00
+  2.32394661e+00  2.33506551e+00  2.34136352e+00  2.35180153e+00
+  2.35386441e+00  2.36700659e+00  2.37406018e+00  2.38311437e+00
+  2.38389970e+00  2.38635357e+00  2.39321787e+00  2.39690326e+00
+  2.41324320e+00  2.42267617e+00  2.43029377e+00  2.43564035e+00
+  2.43794723e+00  2.45145787e+00  2.46696288e+00  2.47562692e+00
+  2.48320620e+00  2.49189107e+00  2.49477716e+00  2.49768279e+00
+  2.50156405e+00  2.51257717e+00  2.51498980e+00  2.51575939e+00
+  2.51989515e+00  2.53013088e+00  2.53296633e+00  2.53713727e+00
+  2.54310408e+00  2.55154298e+00  2.55794326e+00  2.56284943e+00
+  2.57668083e+00  2.58333849e+00  2.58712117e+00  2.58884455e+00
+  2.59358286e+00  2.59554474e+00  2.60336885e+00  2.60890540e+00
+  2.61398855e+00  2.62571592e+00  2.63266999e+00  2.63523942e+00
+  2.64016502e+00  2.64639884e+00  2.65717208e+00  2.66428740e+00
+  2.67473956e+00  2.67816777e+00  2.68309935e+00  2.69112527e+00
+  2.70347957e+00  2.70738530e+00  2.71246567e+00  2.71893269e+00
+  2.72903493e+00  2.73090372e+00  2.73945128e+00  2.74182515e+00
+  2.74371860e+00  2.75729830e+00  2.76286893e+00  2.77170427e+00
+  2.77677066e+00  2.77925202e+00  2.78399169e+00  2.79447243e+00
+  2.80776990e+00  2.81792958e+00  2.82445366e+00  2.83118539e+00
+  2.83397936e+00  2.83952422e+00  2.84531372e+00  2.85000608e+00
+  2.85389746e+00  2.85910489e+00  2.86856708e+00  2.87824281e+00
+  2.88924810e+00  2.89135042e+00  2.89724124e+00  2.90122879e+00
+  2.90941691e+00  2.91507264e+00  2.91928329e+00  2.92586094e+00
+  2.94097971e+00  2.94422283e+00  2.95741273e+00  2.96322192e+00
+  2.97386098e+00  2.98592572e+00  2.99386178e+00  2.99842854e+00
+  3.00650361e+00  3.02255339e+00  3.03033669e+00  3.03650311e+00
+  3.03831804e+00  3.04151266e+00  3.05314015e+00  3.06013819e+00
+  3.06507133e+00  3.07174600e+00  3.07324059e+00  3.08221996e+00
+  3.09001947e+00  3.09258240e+00  3.09820020e+00  3.10647932e+00
+  3.10946219e+00  3.12196676e+00  3.13060926e+00  3.13459789e+00
+  3.14118433e+00  3.14536792e+00  3.15252766e+00  3.16188464e+00
+  3.16313758e+00  3.16937970e+00  3.18209419e+00  3.18399232e+00
+  3.19048878e+00  3.19741870e+00  3.20199017e+00  3.20312924e+00
+  3.20801987e+00  3.21202114e+00  3.21571894e+00  3.22098995e+00
+  3.22720606e+00  3.24141294e+00  3.24486347e+00  3.24962706e+00
+  3.25311790e+00  3.25691434e+00  3.26139927e+00  3.26617657e+00
+  3.26910634e+00  3.27553086e+00  3.28038594e+00  3.28309581e+00
+  3.28848751e+00  3.29476508e+00  3.29954301e+00  3.30393753e+00
+  3.31552982e+00  3.32049203e+00  3.32685572e+00  3.32913825e+00
+  3.33691977e+00  3.34398145e+00  3.34529537e+00  3.34762312e+00
+  3.35555118e+00  3.35973874e+00  3.36112565e+00  3.36839279e+00
+  3.37372384e+00  3.38140045e+00  3.38877309e+00  3.39275164e+00
+  3.39553260e+00  3.40535530e+00  3.41059884e+00  3.41327059e+00
+  3.42212628e+00  3.43060392e+00  3.43297955e+00  3.44677322e+00
+  3.45410813e+00  3.45711293e+00  3.46111342e+00  3.46905462e+00
+  3.48827278e+00  3.49643192e+00  3.49965945e+00  3.50720451e+00
+  3.51263561e+00  3.51714855e+00  3.52184700e+00  3.52559219e+00
+  3.54261923e+00  3.54875120e+00  3.55386101e+00  3.56486165e+00
+  3.57343571e+00  3.58527704e+00  3.59167867e+00  3.59863807e+00
+  3.60412915e+00  3.61188518e+00  3.61808278e+00  3.62162650e+00
+  3.63556019e+00  3.64729935e+00  3.65307466e+00  3.66055362e+00
+  3.67909974e+00  3.68391378e+00  3.69137988e+00  3.70166520e+00
+  3.70821145e+00  3.71438989e+00  3.72755394e+00  3.73796008e+00
+  3.75086836e+00  3.75346548e+00  3.75658413e+00  3.77449263e+00
+  3.78167461e+00  3.78636649e+00  3.78842803e+00  3.79917226e+00
+  3.82594135e+00  3.82819554e+00  3.83858034e+00  3.84570974e+00
+  3.85578649e+00  3.87033941e+00  3.88715878e+00  3.88943938e+00
+  3.91133754e+00  3.91713431e+00  3.92174277e+00  3.92981045e+00
+  3.93970366e+00  3.95068622e+00  3.96117390e+00  3.96595980e+00
+  3.97158573e+00  3.98657288e+00  4.01337012e+00  4.01633095e+00
+  4.02004198e+00  4.04266694e+00  4.04863344e+00  4.07253714e+00
+  4.08674825e+00  4.09546929e+00  4.10782637e+00  4.12743071e+00
+  4.13313193e+00  4.13455221e+00  4.14127067e+00  4.16561179e+00
+  4.16904358e+00  4.18007686e+00  4.18717844e+00  4.21722016e+00
+  4.22142463e+00  4.23446238e+00  4.23733024e+00  4.25230950e+00
+  4.25807380e+00  4.26911482e+00  4.27231715e+00  4.27837303e+00
+  4.29199346e+00  4.29945860e+00  4.30440534e+00  4.33025321e+00
+  4.34106965e+00  4.34567507e+00  4.35731979e+00  4.38121890e+00
+  4.39593304e+00  4.40342081e+00  4.41091332e+00  4.42177521e+00
+  4.43392338e+00  4.44136473e+00  4.45140341e+00  4.45916918e+00
+  4.47299339e+00  4.47606702e+00  4.48491069e+00  4.49109496e+00
+  4.50157955e+00  4.52650054e+00  4.53255571e+00  4.54033690e+00
+  4.54763782e+00  4.55027807e+00  4.58919115e+00  4.59491263e+00
+  4.61442370e+00  4.62857377e+00  4.64054543e+00  4.65412681e+00
+  4.67531978e+00  4.69414353e+00  4.70289889e+00  4.72777771e+00
+  4.73226913e+00  4.75308748e+00  4.79229815e+00  4.79266455e+00
+  4.82920772e+00  4.84986217e+00  4.86790799e+00  4.89004271e+00
+  4.90305194e+00  4.91959712e+00  4.95487857e+00  4.96567780e+00
+  4.99289565e+00  5.00822846e+00  5.05050016e+00  5.07938009e+00
+  5.10364430e+00  5.12676214e+00  5.12796664e+00  5.14022277e+00
+  5.17550987e+00  5.21080274e+00  5.21678262e+00  5.23985236e+00
+  5.26706909e+00  5.29532020e+00  5.32470555e+00  5.36195394e+00
+  5.45575705e+00  5.53861907e+00  5.56011650e+00  5.57516210e+00
+  5.63163203e+00  5.70974096e+00  6.07449544e+00  6.33517041e+00
+  6.37810518e+00  6.45759545e+00  6.50423223e+00  6.82289847e+00
+  6.99554833e+00  7.07934182e+00  2.23805348e+01  2.24472497e+01
+  2.24496206e+01  2.24645472e+01  2.24952106e+01  2.25196165e+01
+  2.25724312e+01  2.25843420e+01  2.26241443e+01  2.26437283e+01
+  2.26586139e+01  2.27175100e+01  2.27626460e+01  2.27913570e+01
+  2.28392815e+01  2.28651176e+01  2.29087092e+01  2.30732024e+01
+  2.31468225e+01  2.33059788e+01  4.39459110e+01]
+nelec by numeric integration = 156.00012455769036
+    CPU time for vxc     91.79 sec, wall time      6.40 sec
+    CPU time for df vj and vk    154.96 sec, wall time     12.51 sec
+E1 = -4169.209059906498  Ecoul = 1923.525916294856  Exc = -126.4533136427357
+Extra cycle  E= -853.422822016566  delta_E= 9.09e-13  |g|= 3.85e-07  |ddm|= 5.42e-07
+    CPU time for scf_cycle   1736.94 sec, wall time    146.69 sec
+    CPU time for SCF   1736.99 sec, wall time    146.70 sec
+converged SCF energy = -853.422822016566
+SCF Done after 146.72 seconds
+after SCF memory used: 6.08 GB
+Converting <class 'pyscf.df.df_jk.density_fit.<locals>.DFHF'> to RHF
+Converting <class 'pyscf.df.df_jk.density_fit.<locals>.DFHF'> to RHF
+hdiag shape (57798,)
+n_occ =  78
+n_vir =  741
+max_vir =  237
+A_size =  57798
+A_reduced_size = 18486
+a_x = 0.25
+beta = 0.6575
+alpha = 1.54
+Q-Gamma tensors building time = 0.43
+after Q matrix memory used: 6.26 GB
+TDDFT
+|-------- In-house Developed TDDFT Starts ---------|
+Residual conv = 1e-05
+
+Number of excited states = 20
+Initial guess:   sTDDFT
+Preconditioner:  sTDDFT
+A matrix size =  57798
+setting initial guess
+sTDDFT Convergence tol = 1.00e-03
+sTDDFT diagonalization Converged
+after  5 iterations; 14.3940 seconds
+final subspace 109
+max_norm =  8.21e-04
+MVcost     4.7358s 32.90%
+GScost     8.2444s 57.28%
+subgencost 0.8222s 5.71%
+subcost    0.1058s 0.74%
+sTDDFT excitation energy:
+[2.7228652  2.95650075 3.58434646 4.06417362 4.71924601 4.84931517
+ 4.99725813 5.04397118 5.17267417 5.34058531 5.47391975 5.55064495
+ 5.58843878 5.70977179 5.83183784 5.92041026 5.97540701 6.00722726
+ 6.02460347 6.18780164 6.24332989 6.28700841 6.30971099 6.35875178
+ 6.37476077 6.45684468 6.51113949 6.51573133]
+new_m = 28
+initial guess done
+
+iteration 0
+beginning of step 0 memory used: 7.42 GB
+    CPU time for df vj and vk   4254.95 sec, wall time    312.79 sec
+subspace size: 28
+Maximum residual norm:  1.19e-01
+unconverged states [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+sTDDFT_preconditioner conv 0.01
+sTDDFT preconditioning Done
+after 11 steps; 17.7715 s
+final subspace 112
+max_norm =  6.71e-03
+initial_cost 0.5522s  3.11%
+MVcost     4.6337s  26.07%
+GScost     9.3646s  52.69%
+subgencost 2.5284s  14.23%
+subcost    0.1994s  1.12%
+m & new_m 28 48
+
+iteration 1
+beginning of step 1 memory used: 7.54 GB
+    CPU time for df vj and vk   3032.95 sec, wall time    224.72 sec
+subspace size: 48
+Maximum residual norm:  2.86e-02
+unconverged states [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+sTDDFT_preconditioner conv 0.01
+sTDDFT preconditioning Done
+after 13 steps; 18.4865 s
+final subspace 115
+max_norm =  5.26e-03
+initial_cost 0.5198s  2.81%
+MVcost     4.3747s  23.66%
+GScost     9.7162s  52.56%
+subgencost 3.0474s  16.48%
+subcost    0.2501s  1.35%
+m & new_m 48 68
+
+iteration 2
+beginning of step 2 memory used: 7.58 GB
+    CPU time for df vj and vk   3035.57 sec, wall time    225.60 sec
+subspace size: 68
+Maximum residual norm:  1.00e-02
+unconverged states [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+sTDDFT_preconditioner conv 0.01
+sTDDFT preconditioning Done
+after 10 steps; 15.7626 s
+final subspace 109
+max_norm =  8.96e-03
+initial_cost 0.5108s  3.24%
+MVcost     3.9574s  25.11%
+GScost     8.5759s  54.41%
+subgencost 2.1322s  13.53%
+subcost    0.1734s  1.10%
+m & new_m 68 88
+
+iteration 3
+beginning of step 3 memory used: 7.54 GB
+    CPU time for df vj and vk   3015.65 sec, wall time    223.63 sec
+subspace size: 88
+Maximum residual norm:  2.59e-03
+unconverged states [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+sTDDFT_preconditioner conv 0.01
+sTDDFT preconditioning Done
+after 9 steps; 14.7131 s
+final subspace 104
+max_norm =  8.63e-03
+initial_cost 0.5087s  3.46%
+MVcost     4.0511s  27.53%
+GScost     7.8470s  53.33%
+subgencost 1.8062s  12.28%
+subcost    0.1425s  0.97%
+m & new_m 88 108
+
+iteration 4
+beginning of step 4 memory used: 7.59 GB
+    CPU time for df vj and vk   3022.59 sec, wall time    225.50 sec
+subspace size: 108
+Maximum residual norm:  6.66e-04
+unconverged states [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+sTDDFT_preconditioner conv 0.01
+sTDDFT preconditioning Done
+after 10 steps; 15.8087 s
+final subspace 106
+max_norm =  8.22e-03
+initial_cost 0.5162s  3.27%
+MVcost     4.1831s  26.46%
+GScost     8.2945s  52.47%
+subgencost 2.1839s  13.81%
+subcost    0.2213s  1.40%
+m & new_m 108 128
+
+iteration 5
+beginning of step 5 memory used: 7.53 GB
+    CPU time for df vj and vk   3021.94 sec, wall time    225.17 sec
+subspace size: 128
+Maximum residual norm:  1.23e-04
+unconverged states [0, 2, 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+sTDDFT_preconditioner conv 0.01
+sTDDFT preconditioning Done
+after 15 steps; 14.0037 s
+final subspace 107
+max_norm =  6.50e-03
+initial_cost 0.3359s  2.40%
+MVcost     3.3252s  23.75%
+GScost     6.4798s  46.27%
+subgencost 2.7914s  19.93%
+subcost    0.3199s  2.28%
+m & new_m 128 146
+
+iteration 6
+beginning of step 6 memory used: 7.60 GB
+    CPU time for df vj and vk   2715.92 sec, wall time    202.84 sec
+subspace size: 146
+Maximum residual norm:  2.46e-05
+unconverged states [4, 10, 11, 18]
+sTDDFT_preconditioner conv 0.01
+sTDDFT preconditioning Done
+after 16 steps; 2.9879 s
+final subspace 42
+max_norm =  7.12e-03
+initial_cost 0.0354s  1.18%
+MVcost     1.1096s  37.14%
+GScost     0.8035s  26.89%
+subgencost 0.8117s  27.17%
+subcost    0.0228s  0.76%
+m & new_m 146 150
+
+iteration 7
+beginning of step 7 memory used: 7.55 GB
+    CPU time for df vj and vk    607.96 sec, wall time     45.95 sec
+subspace size: 150
+Maximum residual norm:  8.16e-06
+TDDFT precedure Done
+
+============= TDDFT Calculation Done ==============
+after 8 iterations 2617.32 s
+Final subspace  150
+preconditioning cost 100.0271 0.04 %
+max_norm =  8.16e-06
+Total TDDFT memory used: 7.53 GB
+Excited State energies (eV) =
+ [2.9274288  3.07299173 3.83174974 4.26303477 4.92101156 5.05899331
+ 5.2158842  5.28159765 5.3849574  5.63865433 5.69663719 5.78684279
+ 5.8463089  5.98594581 6.09020822 6.11010192 6.2035055  6.22902856
+ 6.25907917 6.31321986]
+xyzfile = 49_Retinal.xyz
+checkfile = True
+method = RKS
+functional = pbe0
+basis_set = def2-tzvp
+density_fit = True
+grid_level = 3
+nstates = 20
+pytd = False
+TDA = False
+TDDFT = True
+dynpol = False
+dynpol_omega = []
+stapol = False
+sTDA = False
+sTDDFT = False
+Truncate_test = False
+truncate_virtual = 40.0
+ip_options = [0]
+conv_tolerance = 1e-05
+initial_TOL = 0.001
+precond_TOL = 0.01
+extrainitial = 8
+max = 30
+eigensolver_tol = 1e-05
+memory = 50000
+verbose = 5
+beta = []
+alpha = []
+|-------- In-house Developed TDDFT Ends ----------|

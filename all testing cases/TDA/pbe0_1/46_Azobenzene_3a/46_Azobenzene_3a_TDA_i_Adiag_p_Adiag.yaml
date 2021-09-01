@@ -1,0 +1,66 @@
+A matrix size: 140170
+Initial guess time: 0.010302543640136719
+New guess generating time: 0.09888744354248047
+SCF time: 851.7168567180634
+alpha: 1.54
+ax: 0.25
+beta: 0.6575
+excitation energy(eV):
+- 2.85586409704913
+final subspace size: 21
+functional: pbe0
+initial guess: Adiag
+initial guess threshold: 0.001
+iteration:
+- residual norms:
+  - 0.028092691620192494
+- residual norms:
+  - 0.008634094340973036
+- residual norms:
+  - 0.007475306892094106
+- residual norms:
+  - 0.008486662509756486
+- residual norms:
+  - 0.015864811584812274
+- residual norms:
+  - 0.008309596499273986
+- residual norms:
+  - 0.0051060982861505615
+- residual norms:
+  - 0.0030302138236989063
+- residual norms:
+  - 0.002335368820435185
+- residual norms:
+  - 0.0020990048662892953
+- residual norms:
+  - 0.0011687608448190106
+- residual norms:
+  - 0.0006101802128428355
+- residual norms:
+  - 0.00033479653865065213
+- residual norms:
+  - 0.00016740950177835848
+- residual norms:
+  - 8.61560579354735e-05
+- residual norms:
+  - 5.7396628622303114e-05
+- residual norms:
+  - 4.214366082228915e-05
+- residual norms:
+  - 2.6265790801578477e-05
+- residual norms:
+  - 1.3395376183416855e-05
+- residual norms:
+  - 5.382157541551971e-06
+iterations: 20
+max_vir: 284
+method: RKS
+molecule: 46_Azobenzene_3a
+n_occ: 131
+n_vir: 1070
+nstate: 1
+preconditioner: Adiag
+preconditioner threshold: 0.01
+threshold: 1.0e-05
+total time: 2671.25914812088
+virtual truncation tol: 40.0

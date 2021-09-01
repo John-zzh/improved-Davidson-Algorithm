@@ -1,0 +1,56 @@
+A matrix size: 54880
+Initial guess time: 0.005037069320678711
+New guess generating time: 0.03016042709350586
+SCF time: 184.94047832489014
+alpha: 4.58
+ax: 0.56
+beta: 8.0
+excitation energy(eV):
+- 3.9600091918996982
+final subspace size: 16
+functional: wb97x
+initial guess: Adiag
+initial guess threshold: 0.001
+iteration:
+- residual norms:
+  - 0.14648726764502726
+- residual norms:
+  - 0.0434546369306786
+- residual norms:
+  - 0.02122393865230407
+- residual norms:
+  - 0.009687236888895553
+- residual norms:
+  - 0.004179610943678382
+- residual norms:
+  - 0.00216192492688438
+- residual norms:
+  - 0.0010955043687668412
+- residual norms:
+  - 0.0007340005915162129
+- residual norms:
+  - 0.0005013485115944346
+- residual norms:
+  - 0.00025351996238004947
+- residual norms:
+  - 0.00015804877306744018
+- residual norms:
+  - 9.708451080295748e-05
+- residual norms:
+  - 4.226598098499263e-05
+- residual norms:
+  - 2.0748713289013804e-05
+- residual norms:
+  - 6.953845410999283e-06
+iterations: 15
+max_vir: 178
+method: RKS
+molecule: 36_Coumarin_153
+n_occ: 80
+n_vir: 686
+nstate: 1
+preconditioner: Adiag
+preconditioner threshold: 0.01
+threshold: 1.0e-05
+total time: 648.0713801383972
+virtual truncation tol: 40.0

@@ -1,0 +1,56 @@
+A matrix size: 202193
+Initial guess time: 0.014609813690185547
+New guess generating time: 0.0849466323852539
+SCF time: 1967.2931425571442
+alpha: 1.54
+ax: 0.25
+beta: 0.6575
+excitation energy(eV):
+- 2.2333369090604416
+final subspace size: 16
+functional: pbe0
+initial guess: Adiag
+initial guess threshold: 0.001
+iteration:
+- residual norms:
+  - 0.14805310739611058
+- residual norms:
+  - 0.14550427134227178
+- residual norms:
+  - 0.046362162930565644
+- residual norms:
+  - 0.014754461205266103
+- residual norms:
+  - 0.008905225551844028
+- residual norms:
+  - 0.006206377417187138
+- residual norms:
+  - 0.00596326092781049
+- residual norms:
+  - 0.002930849539547663
+- residual norms:
+  - 0.0010314534834064972
+- residual norms:
+  - 0.0006298283462742791
+- residual norms:
+  - 0.00025226577337661427
+- residual norms:
+  - 7.16741868328299e-05
+- residual norms:
+  - 2.9134808031491302e-05
+- residual norms:
+  - 1.0680598899970996e-05
+- residual norms:
+  - 3.4755705643977525e-06
+iterations: 15
+max_vir: 403
+method: RKS
+molecule: 76_Protoporphyrin
+n_occ: 149
+n_vir: 1357
+nstate: 1
+preconditioner: Adiag
+preconditioner threshold: 0.01
+threshold: 1.0e-05
+total time: 4680.566711902618
+virtual truncation tol: 40.0

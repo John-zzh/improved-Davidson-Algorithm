@@ -1,0 +1,3881 @@
+curpath /scratch/pbsjobs/job.15971908.hpc
+lib.num_threads() =  16
+at beginning memory used: 53.68359375 MB
+mol.max_memory 50000
+#INFO: **** input file is /home/zzz6/bench/scripts/Davidson_Jul6_GS.py ****
+import time
+import numpy as np
+import scipy
+from opt_einsum import contract as einsum
+#from einsum2 import einsum2 as einsum
+import pyscf
+from pyscf import gto, scf, dft, tddft, data, lib
+import argparse
+import os
+import psutil
+import yaml
+
+# from pyscf.tools import molden
+# from pyscf.dft import xcfun
+
+# wb97x methanol, sTDA[ 6.46739329  8.18181719  8.38358186  9.45195086  9.52132657  9.98634407
+#  10.57628203 11.22108803 11.23872459 11.57456576]
+
+# wb97x methanol, sTDDFT [6.46636223 8.18031038 8.38140358 9.45010938 9.50610109]
+# truncate 40 eV         [6.46748128 8.18219018 8.38315179 9.45216734 9.51268853]
+#
+print('curpath', os.getcwd())
+print('lib.num_threads() = ', lib.num_threads())
+
+parser = argparse.ArgumentParser(description='Davidson')
+parser.add_argument('-x', '--xyzfile',                      type=str,   default='NA',  help='xyz filename (molecule.xyz)')
+parser.add_argument('-chk', '--checkfile',                  type=bool,  default=False, help='checkpoint filename (.chk)')
+parser.add_argument('-m', '--method',                       type=str,   default='RKS', help='RHF RKS UHF UKS')
+parser.add_argument('-f', '--functional',                   type=str,   default='NA',  help='xc functional')
+parser.add_argument('-b', '--basis_set',                    type=str,   default='NA',  help='basis set')
+parser.add_argument('-df', '--density_fit',                 type=bool,  default=True,  help='density fitting turn on')
+parser.add_argument('-g', '--grid_level',                   type=int,   default='3',   help='0-9, 9 is best')
+
+parser.add_argument('-n',  '--nstates',                     type=int,   default = 4,      help='number of excited states')
+parser.add_argument('-pytd',  '--pytd',                     type=bool,  default = False , help='whether to compare with PySCF TDDFT')
+
+parser.add_argument('-TDA','--TDA',                         type=bool,  default = False, help='perform TDA')
+parser.add_argument('-TDDFT','--TDDFT',                     type=bool,  default = False, help='perform TDDFT')
+parser.add_argument('-dynpol','--dynpol',                   type=bool,  default = False, help='perform dynamic polarizability')
+parser.add_argument('-omega','--dynpol_omega',              type=float, default = [], nargs='+', help='dynamic polarizability with perurbation omega, a list')
+parser.add_argument('-stapol','--stapol',                   type=bool,  default = False, help='perform static polarizability')
+
+parser.add_argument('-sTDA','--sTDA',                       type=bool,  default = False, help='perform sTDA calculation')
+parser.add_argument('-sTDDFT','--sTDDFT',                   type=bool,  default = False, help='perform sTDDFT calculation')
+parser.add_argument('-TT','--Truncate_test',                type=bool,  default = False, help='test the wall time for different virtual truncation')
+
+parser.add_argument('-TV','--truncate_virtual',             type=float, default = 0, help='the threshold to truncate virtual orbitals, in eV')
+
+parser.add_argument('-o1', '--TDA_options',                 type=int,   default = [0], nargs='+', help='0-7')
+parser.add_argument('-o2', '--TDDFT_options',               type=int,   default = [0], nargs='+', help='0-3')
+parser.add_argument('-o3', '--dynpol_options',              type=int,   default = [0], nargs='+', help='0-3')
+parser.add_argument('-o4', '--stapol_options',              type=int,   default = [0], nargs='+', help='0-3')
+
+parser.add_argument('-t1',  '--TDA_tolerance',              type=float, default= 1e-5, help='residual norm conv for TDA')
+parser.add_argument('-t2',  '--TDDFT_tolerance',            type=float, default= 1e-5, help='residual norm conv for TDDFT')
+parser.add_argument('-t3',  '--dynpol_tolerance',           type=float, default= 1e-5, help='residual norm conv for dynamic polarizability')
+parser.add_argument('-t4',  '--stapol_tolerance',           type=float, default= 1e-5, help='residual norm conv for static polarizability')
+
+parser.add_argument('-max',  '--max',                       type=int,   default= 30,   help='max iterations')
+
+parser.add_argument('-it1', '--TDA_initialTOL',             type=float, default= 1e-3, help='conv for sTDA inital guess')
+parser.add_argument('-it2', '--TDDFT_initialTOL',           type=float, default= 1e-3, help='conv for sTDDFT inital guess')
+parser.add_argument('-it3', '--dynpol_initprecTOL',         type=float, default= 1e-2, help='conv for s-dynamic polarizability inital guess and precond')
+parser.add_argument('-it4', '--stapol_initprecTOL',         type=float, default= 1e-2, help='conv for s-static polarizability inital guess and precond')
+
+parser.add_argument('-pt1', '--TDA_precondTOL',             type=float, default= 1e-2, help='conv for TDA preconditioner')
+parser.add_argument('-pt2', '--TDDFT_precondTOL',           type=float, default= 1e-2, help='conv for TDDFT preconditioner')
+
+parser.add_argument('-ei1', '--TDA_extrainitial',           type=int,   default= 8,    help='number of extral TDA initial guess vectors, 0-8')
+parser.add_argument('-ei2', '--TDDFT_extrainitial',         type=int,   default= 8,    help='number of extral TDDFT initial guess vectors, 0-8')
+parser.add_argument('-ei3n','--TDDFT_extrainitial_3n',      type=bool,  default= False,help='number of extral TDDFT initial guess vectors, 3state')
+
+parser.add_argument('-et', '--eigensolver_tol',             type=float, default= 1e-5, help='conv for new guess generator in new_ES')
+parser.add_argument('-M',  '--memory',                      type=int,   default= 4000, help='max_memory')
+parser.add_argument('-v',  '--verbose',                     type=int,   default= 5,    help='mol.verbose = 3,4,5')
+
+parser.add_argument('-be', '--beta',                        type=float, default= [],    nargs='+', help='beta = 0.83')
+parser.add_argument('-al', '--alpha',                       type=float, default= [],    nargs='+', help='alpha = 0.83')
+
+args = parser.parse_args()
+################################################
+
+
+########################################################
+def show_memory_info(hint):
+    pid = os.getpid()
+    p = psutil.Process(pid)
+    info = p.memory_full_info()
+    memory = info.uss / 1024 / 1024
+    print('{} memory used: {} MB'.format(hint, memory))
+########################################################
+
+# info = psutil.virtual_memory()
+# print(info)
+
+show_memory_info('at beginning')
+
+# read xyz file and delete its first two lines
+basename = args.xyzfile.split('.',1)[0]
+
+f = open(args.xyzfile)
+atom_coordinates = f.readlines()
+del atom_coordinates[:2]
+###########################################################################
+# build geometry in PySCF
+mol = gto.Mole()
+mol.atom = atom_coordinates
+mol.basis = args.basis_set
+mol.verbose = args.verbose
+mol.max_memory = args.memory
+print('mol.max_memory', mol.max_memory)
+mol.build(parse_arg = False)
+###########################################################################
+###################################################
+#DFT or HF?
+if args.method == 'RKS':
+    mf = dft.RKS(mol)
+elif args.method == 'UKS':
+    mf = dft.UKS(mol)
+elif args.method == 'RHF':
+    mf = scf.RHF(mol)
+elif args.method == 'UHF':
+    mf = scf.UHF(mol)
+
+if 'KS' in args.method:
+    print('RKS')
+    mf.xc = args.functional
+    mf.grids.level = args.grid_level
+    # 0-9, big number for large mesh grids, default is 3
+else:
+    print('HF')
+
+if args.density_fit:
+    mf = mf.density_fit()
+    print('Density fitting turned on')
+
+if args.checkfile == True:
+    mf.chkfile = basename + '_' + args.functional + '.chk'
+    mf.init_guess = 'chkfile'
+    # to use the chk file as scf input
+
+
+mf.conv_tol = 1e-10
+
+print ('Molecule built')
+print ('Calculating SCF Energy...')
+kernel_0 = time.time()
+mf.kernel()
+kernel_1 = time.time()
+kernel_t = kernel_1 - kernel_0
+print ('SCF Done after ', round(kernel_t, 4), 'seconds')
+
+show_memory_info('after SCF')
+
+#################################################################
+# Collect everything needed from PySCF
+Qstart = time.time()
+Natm = mol.natm
+mo_occ = mf.mo_occ
+n_occ = len(np.where(mo_occ > 0)[0])
+#mf.mo_occ is an array of occupance [2,2,2,2,2,0,0,0,0.....]
+n_vir = len(np.where(mo_occ == 0)[0])
+#################################################
+# generate matrix vector multiplication function
+td = tddft.TDA(mf)
+TDA_vind, hdiag = td.gen_vind(mf)
+
+TD = tddft.TDDFT(mf)
+TDDFT_vind, Hdiag = TD.gen_vind(mf)
+
+A_size = n_occ * n_vir
+
+# return AV
+def TDA_matrix_vector(V):
+    return TDA_vind(V.T).T
+
+def TDDFT_matrix_vector(X, Y):
+    '''return AX + BY and AY + BX'''
+    XY = np.vstack((X,Y)).T
+    U = TDDFT_vind(XY)
+    U1 = U[:,:A_size].T
+    U2 = -U[:,A_size:].T
+    return U1, U2
+
+def static_polarizability_matrix_vector(X):
+    '''return (A+B)X '''
+    U1, U2 = TDDFT_matrix_vector(X,X)
+    return U1
+#################################################
+
+##################################################################################################
+# create a function for dictionary of chemical hardness, by mappig two iteratable subject, list
+# list of elements
+elements = ['H' , 'He', 'Li', 'Be', 'B' , 'C' , 'N' , 'O' , 'F' , 'Ne', 'Na', 'Mg', 'Al', 'Si', 'P' , 'S' , 'Cl', 'Ar', 'K' , 'Ca','Sc', 'Ti', 'V' , 'Cr', 'Mn', 'Fe', 'Co', 'Ni', 'Cu', 'Zn','Ga', 'Ge', 'As', 'Se', 'Br', 'Kr', 'Rb', 'Sr', 'Y' , 'Zr','Nb', 'Mo', 'Tc', 'Ru', 'Rh', 'Pd', 'Ag', 'Cd', 'In', 'Sn','Sb', 'Te', 'I' , 'Xe', 'Cs', 'Ba', 'La', 'Ce', 'Pr', 'Nd','Pm', 'Sm', 'Eu', 'Gd', 'Tb', 'Dy', 'Ho', 'Er', 'Tm', 'Yb','Lu', 'Hf', 'Ta', 'W' , 'Re', 'Os', 'Ir', 'Pt', 'Au', 'Hg','Tl', 'Pb', 'Bi', 'Po', 'At', 'Rn', 'Fr', 'Ra', 'Ac', 'Th', 'Pa', 'U' , 'Np', 'Pu']
+#list of chemical hardness, they are floats, containing elements 1-94, in Hartree
+hardness = [0.47259288,0.92203391,0.17452888,0.25700733,0.33949086,0.42195412,0.50438193,0.58691863,0.66931351,0.75191607,0.17964105,0.22157276,0.26348578,0.30539645,0.34734014,0.38924725,0.43115670,0.47308269,0.17105469,0.20276244,0.21007322,0.21739647,0.22471039,0.23201501,0.23933969,0.24665638,0.25398255,0.26128863,0.26859476,0.27592565,0.30762999,0.33931580,0.37235985,0.40273549,0.43445776,0.46611708,0.15585079,0.18649324,0.19356210,0.20063311,0.20770522,0.21477254,0.22184614,0.22891872,0.23598621,0.24305612,0.25013018,0.25719937,0.28784780,0.31848673,0.34912431,0.37976593,0.41040808,0.44105777,0.05019332,0.06762570,0.08504445,0.10247736,0.11991105,0.13732772,0.15476297,0.17218265,0.18961288,0.20704760,0.22446752,0.24189645,0.25932503,0.27676094,0.29418231,0.31159587,0.32902274,0.34592298,0.36388048,0.38130586,0.39877476,0.41614298,0.43364510,0.45104014,0.46848986,0.48584550,0.12526730,0.14268677,0.16011615,0.17755889,0.19497557,0.21240778,0.07263525,0.09422158,0.09920295,0.10418621,0.14235633,0.16394294,0.18551941,0.22370139]
+HARDNESS = dict(zip(elements,hardness))
+#function to return chemical hardness from dictionary HARDNESS
+def Hardness(atom_id):
+    atom = mol.atom_pure_symbol(atom_id)
+    return HARDNESS[atom]
+
+################################################################################
+# This block is the function to produce orthonormalized coefficient matrix C
+def matrix_power(S,a):
+    s,ket = np.linalg.eigh(S)
+    s = s**a
+    X = np.dot(ket*s,ket.T)
+    #X == S^a
+    return X
+
+def matrix_power2(S):
+    s,ket = np.linalg.eigh(S)
+    s_sqrt = s**0.5
+    s_inv = 1/s_sqrt
+
+    S1 = np.dot(ket*s_sqrt,ket.T)
+    S2 = np.dot(ket*s_inv,ket.T)
+
+    #S1 == S^1/2
+    #S2 == S^-1/2
+    return S1, S2
+
+def orthonormalize(C):
+    X = matrix_power(mf.get_ovlp(), 0.5)
+    # S = mf.get_ovlp() #.get_ovlp() is basis overlap matrix
+    # S = np.dot(np.linalg.inv(c.T), np.linalg.inv(c))
+    C = np.dot(X,C)
+    return C
+
+################################################################################
+def gen_alpha_beta_ax():
+    RSH_F = [
+    'lc-b3lyp',
+    'wb97',
+    'wb97x',
+    'wb97x-d3',
+    'cam-b3lyp']
+    RSH_paramt = [
+    [0.53, 8.00, 4.50],
+    [0.61, 8.00, 4.41],
+    [0.56, 8.00, 4.58],
+    [0.51, 8.00, 4.51],
+    [0.38, 1.86, 0.90]]
+    RSH_F_paramt = dict(zip(RSH_F, RSH_paramt))
+
+    hybride_F = ['b3lyp', 'tpssh', 'm05-2x', 'pbe0', 'm06', 'm06-2x', 'NA']# NA is for Hartree-Fork
+    hybride_paramt = [0.2, 0.1, 0.56, 0.25, 0.27, 0.54, 1]
+    DF_ax = dict(zip(hybride_F, hybride_paramt))
+    #Zhao, Y. and Truhlar, D.G., 2006. Density functional for spectroscopy: no long-range self-interaction error, good performance for Rydberg and charge-transfer states, and better performance on average than B3LYP for ground states. The Journal of Physical Chemistry A, 110(49), pp.13126-13130.
+
+    if args.functional in RSH_F:
+        a_x, beta, alpha = RSH_F_paramt[args.functional]
+
+    elif args.functional in hybride_F:
+        beta1 = 0.2
+        beta2 = 1.83
+        alpha1 = 1.42
+        alpha2 = 0.48
+
+        a_x = DF_ax[args.functional]
+        beta = beta1 + beta2 * a_x
+        alpha = alpha1 + alpha2 * a_x
+
+    if args.beta != []:
+        beta = args.beta[0]
+
+    if args.alpha != []:
+        alpha = args.alpha[0]
+
+    print('a_x =', a_x)
+    print('beta =', beta)
+    print('alpha =', alpha)
+    return a_x, beta, alpha
+
+a_x, beta, alpha = gen_alpha_beta_ax()
+
+# creat \eta matrix
+
+def gen_gammaJK():
+    Natm = mol.natm
+    a = [Hardness(atom_id) for atom_id in range(Natm)]
+    a = np.asarray(a).reshape(1,-1)
+    eta = (a+a.T)/2
+
+    #Inter-particle distance array
+    # unit == ’Bohr’, Its value is 5.29177210903(80)×10^(−11) m
+    R = pyscf.gto.mole.inter_distance(mol, coords=None)
+    # creat GammaK and GammaK matrix
+    GammaJ = (R**beta + (a_x * eta)**(-beta))**(-1/beta)
+    GammaK = (R**alpha + eta**(-alpha)) **(-1/alpha)
+    return GammaJ, GammaK
+
+GammaJ, GammaK = gen_gammaJK()
+
+def generateQ():
+    N_bf = len(mo_occ)
+    C = mf.mo_coeff
+    # mf.mo_coeff is the coefficient matrix
+    C = orthonormalize(C)
+    # C is orthonormalized coefficient matrix, N_bf * N_bf
+    # np.dot(C.T,C) is a an identity matrix
+    aoslice = mol.aoslice_by_atom()
+    q = np.zeros([Natm, N_bf, N_bf])
+    #N_bf is number Atomic orbitals = n_occ+n_vir
+    for atom_id in range(Natm):
+        shst, shend, atstart, atend = aoslice[atom_id]
+        q[atom_id,:, :] = np.dot(C[atstart:atend, :].T, C[atstart:atend, :])
+    return q
+
+q_tensors = generateQ()
+
+''' if no truncation, max_vir = n_vir and n_occ + max_vir = N_bf '''
+print('hdiag', hdiag.shape)
+delta_diag_A = hdiag.reshape(n_occ, n_vir)
+
+def gen_maxvir(tol_eV = args.truncate_virtual):
+    if tol_eV != 0:
+        homo_vir = delta_diag_A[-1,:].tolist()
+        # print(delta_diag_A[-1,:]*27.211386245988)
+        tol = tol_eV/27.211386245988
+        for i in range(len(homo_vir)):
+            if homo_vir[i] >= tol:
+                max_vir = i
+                break
+            else:
+                max_vir = n_vir
+    else:
+        max_vir = n_vir
+    return max_vir
+
+max_vir = gen_maxvir()
+print('n_occ = ', n_occ)
+print('n_vir = ', n_vir)
+print('max_vir = ', max_vir)
+
+A_reduced_size = n_occ * max_vir
+
+def gen_QJK(max_vir=max_vir):
+
+    q_ij = np.zeros((Natm, n_occ, n_occ))
+    q_ij[:,:,:] = q_tensors[:,:n_occ,:n_occ]
+
+    q_ab = np.zeros((Natm, max_vir, max_vir))
+    q_ab[:,:,:] = q_tensors[:,n_occ:n_occ+max_vir,n_occ:n_occ+max_vir]
+
+    q_ia = np.zeros((Natm, n_occ, max_vir))
+    q_ia[:,:,:] = q_tensors[:,:n_occ,n_occ:n_occ+max_vir]
+
+    GK_q_jb = einsum("Bjb,AB->Ajb", q_ia, GammaK)
+    GJ_q_ab = einsum("Bab,AB->Aab", q_ab, GammaJ)
+
+
+    return q_ij, q_ab, q_ia , GK_q_jb, GJ_q_ab
+
+q_ij, q_ab, q_ia , GK_q_jb, GJ_q_ab = gen_QJK()
+# pre-calculate and store the Q-Gamma rank 3 tensor
+Qend = time.time()
+
+Q_time = Qend - Qstart
+print('Q-Gamma tensors building time =', round(Q_time, 4))
+################################################################################
+
+show_memory_info('after Q matrix')
+
+
+################################################################################
+# This block is to define on-the-fly two electron intergeral (pq|rs)
+# A_iajb * v = delta_ia_ia*v + 2(ia|jb)*v - (ij|ab)*v
+
+# iajb_v = einsum('Aia,Bjb,AB,jbm -> iam', q_ia, q_ia, GammaK, V)
+# ijab_v = einsum('Aij,Bab,AB,jbm -> iam', q_ij, q_ab, GammaJ, V)
+
+max_vir_hdiag = delta_diag_A[:,:max_vir]
+
+def gen_iajb_ijab_ibja_delta_fly(max_vir=max_vir, \
+                                q_ij=q_ij, \
+                                q_ab=q_ab, \
+                                q_ia=q_ia , \
+                                GK_q_jb=GK_q_jb, \
+                                GJ_q_ab=GJ_q_ab):
+
+    def iajb_fly(V):
+        start = time.time()
+        GK_q_jb_V = einsum("Ajb,jbm->Am", GK_q_jb, V)
+        iajb_V = einsum("Aia,Am->iam", q_ia, GK_q_jb_V)
+        end = time.time()
+        # print('iajb =', round(end - start,4))
+        return iajb_V
+
+
+    def ijab_fly(V):
+        start = time.time()
+        GJ_q_ab_V = einsum("Aab,jbm->Ajam", GJ_q_ab, V)
+        ijab_V = einsum("Aij,Ajam->iam", q_ij, GJ_q_ab_V)
+        end = time.time()
+        # print('ijab =', round(end - start,4))
+        return ijab_V
+
+    def ibja_fly(V):
+        start = time.time()
+        # the Forck exchange energy in B matrix
+        ''' (ib|ja) '''
+        # GK_q_jb_V = einsum("Aja,jbm->Abam", GK_q_jb, V)
+        # ibja_V = einsum("Aib,Abam->iam", q_ia, GK_q_jb_V)
+        # [ 6.46636595  8.18031516  8.38140638  9.45011397  9.50610571  9.979084 10.57322403 11.2055107  11.23419534 11.57308169]
+
+        q_ib_V = einsum("Aib,jbm->Ajim", q_ia, V)
+        ibja_V = einsum("Aja,Ajim->iam", GK_q_jb, q_ib_V)
+        #[ 6.46636595  8.18031515  8.38140638  9.45011397  9.50610571  9.979084 10.57322403 11.2055107  11.23419534 11.57308169]
+        end = time.time()
+        # print('ibja =', round(end - start,4))
+        return ibja_V
+
+    def delta_fly(V):
+        '''delta_diag_A.shape = (n_occ, n_vir)'''
+        delta_v = einsum("ia,iam->iam", delta_diag_A, V)
+        return delta_v
+
+    def delta_max_vir_fly(V):
+        '''delta_diag_A.shape = (n_occ, n_vir)'''
+        delta_max_vir_v = einsum("ia,iam->iam", max_vir_hdiag, V)
+        return delta_max_vir_v
+
+    return iajb_fly, ijab_fly, ibja_fly, delta_fly, delta_max_vir_fly
+
+iajb_fly, ijab_fly, ibja_fly, delta_fly, delta_max_vir_fly = \
+                                                gen_iajb_ijab_ibja_delta_fly()
+
+def gen_sTDA_sTDDFT_stapol_fly(max_vir=max_vir, \
+                            iajb_fly = iajb_fly, \
+                            ijab_fly = ijab_fly, \
+                            ibja_fly = ibja_fly, \
+                            delta_max_vir_fly = delta_max_vir_fly):
+
+    def sTDA_mv(V):
+        # sTDA_A * V
+        V = V.reshape(n_occ, max_vir, -1)
+        '''MV =  delta_fly(V) + 2*iajb_fly(V) - ijab_fly(V)'''
+        MV = delta_max_vir_fly(V) + 2*iajb_fly(V) - ijab_fly(V)
+        MV = MV.reshape(n_occ*max_vir,-1)
+        return MV
+
+    def sTDDFT_mv(X, Y):
+        '''''return AX+BY and AY+BX'''''
+        X = X.reshape(n_occ, max_vir,-1)
+        Y = Y.reshape(n_occ, max_vir,-1)
+
+        X_max_vir = X[:,:max_vir,:]
+        Y_max_vir = Y[:,:max_vir,:]
+
+        iajb_X = iajb_fly(X_max_vir)
+        iajb_Y = iajb_fly(Y_max_vir)
+
+        ijab_X = ijab_fly(X_max_vir)
+        ijab_Y = ijab_fly(Y_max_vir)
+
+        ibja_X = ibja_fly(X_max_vir)
+        ibja_Y = ibja_fly(Y_max_vir)
+
+        delta_X = delta_max_vir_fly(X_max_vir)
+        delta_Y = delta_max_vir_fly(Y_max_vir)
+
+        '''sTDA_A =  delta_fly(V) + 2*iajb_fly(V) - ijab_fly(V)'''
+        '''sTDDFT_B = 2*iajb_fly(V) - a_x*ibja_fly(V)'''
+
+        AX = delta_X + 2*iajb_X - ijab_X
+        AY = delta_Y + 2*iajb_Y - ijab_Y
+
+        BX = 2*iajb_X - a_x*ibja_X
+        BY = 2*iajb_Y - a_x*ibja_Y
+
+        U1 = np.zeros_like(X)
+        U2 = np.zeros_like(X)
+
+        U1[:,:max_vir,:] = AX + BY
+        U2[:,:max_vir,:] = AY + BX
+
+        U1 = U1.reshape(n_occ*max_vir,-1)
+        U2 = U2.reshape(n_occ*max_vir,-1)
+
+        return U1, U2
+
+    def sTDDFT_stapol_mv(X):
+        ''' return (A+B)X '''
+        ''' sTDA_A = delta_fly(V) + 4*iajb_fly(V) \
+                    - ijab_fly(V) - a_x*ibja_fly(V)'''
+        X = X.reshape(n_occ, max_vir, -1)
+
+        U = delta_max_vir_fly(X) + 4*iajb_fly(X) - ijab_fly(X) - a_x*ibja_fly(X)
+
+        U = U.reshape(n_occ*max_vir, -1)
+        return U
+
+    return sTDA_mv, sTDDFT_mv, sTDDFT_stapol_mv
+
+sTDA_mv, sTDDFT_mv, sTDDFT_stapol_mv = gen_sTDA_sTDDFT_stapol_fly()
+
+################################################################################
+
+################################################################################
+# orthonormalization of guess_vectors
+def Gram_Schmidt_bvec(A, bvec):
+    ''' orthonormalize vector b against all A vectors'''
+    ''' b = b - A*(A.T*b)'''
+    if A.shape[1] != 0:
+        # suppose A is orthonormalized
+        projections_coeff = np.dot(A.T, bvec)
+        bvec -= np.dot(A, projections_coeff)
+    return bvec
+
+def VW_Gram_Schmidt(x, y, V, W):
+    m = np.dot(V.T,x)
+    m += np.dot(W.T,y)
+
+    n = np.dot(W.T,x)
+    n += np.dot(V.T,y)
+
+    x -= np.dot(V,m)
+    x -= np.dot(W,n)
+
+    y -= np.dot(W,m)
+    y -= np.dot(V,n)
+
+    return x, y
+
+def Gram_Schmidt_fill_holder(V, count, vecs):
+    # V is a vectors holder
+    # count is the amount of vectors that already sit in the holder
+    nvec = np.shape(vecs)[1]
+    # amount of new vectors intended to fill in the V
+    # count will be final amount of vectors in V
+    for j in range(nvec):
+        vec = vecs[:, j].reshape(-1,1)
+        vec = Gram_Schmidt_bvec(V[:, :count], vec)   #single orthonormalize
+        vec = Gram_Schmidt_bvec(V[:, :count], vec)   #double orthonormalize
+
+        norm = np.linalg.norm(vec)
+        if  norm > 1e-14:
+            vec = vec/norm
+            V[:, count] = vec[:,0]
+            count += 1
+    new_count = count
+
+    return V, new_count
+
+
+def S_symmetry_orthogonal(x,y):
+
+    x_p_y = x + y
+    x_p_y_norm = np.linalg.norm(x_p_y)
+
+    x_m_y = x - y
+    x_m_y_norm = np.linalg.norm(x_m_y)
+
+    a = x_p_y_norm/x_m_y_norm
+
+    x_p_y /= 2
+    x_m_y *= a/2
+
+    new_x = x_p_y + x_m_y
+    new_y = x_p_y - x_m_y
+
+    # print('x.Ty', np.dot(new_x.T,new_y))
+    return new_x, new_y
+
+def symmetrize(A):
+    A = (A + A.T)/2
+    return A
+
+def anti_symmetrize(A):
+    A = (A - A.T)/2
+    return A
+
+
+################################################################################
+# define the orthonormality of a matrix A as the norm of (A.T*A - I)
+def check_orthonormal(A):
+    n = np.shape(A)[1]
+    B = np.dot(A.T, A)
+    c = np.linalg.norm(B - np.eye(n))
+    return c
+################################################################################
+
+################################################################################
+def VW_Gram_Schmidt_fill_holder(V_holder, W_holder, m, X_new, Y_new):
+    # put X_new into V, and Y_new into W
+    # m is the amount of vectors that already on V or W
+    VWGSstart = time.time()
+    nvec = np.shape(X_new)[1]
+    # amount of new vectors intended to fill in the V_holder and W_holder
+    GScost = 0
+    normcost = 0
+    symmetrycost = 0
+    for j in range(0, nvec):
+
+        V = V_holder[:,:m]
+        W = W_holder[:,:m]
+
+        x_tmp = X_new[:,j].reshape(-1,1)
+        y_tmp = Y_new[:,j].reshape(-1,1)
+
+        GSstart = time.time()
+        x_tmp,y_tmp = VW_Gram_Schmidt(x_tmp, y_tmp, V, W)
+        x_tmp,y_tmp = VW_Gram_Schmidt(x_tmp, y_tmp, V, W)
+        GSend = time.time()
+        GScost += GSend - GSstart
+
+        symmetrystart = time.time()
+        x_tmp,y_tmp = S_symmetry_orthogonal(x_tmp,y_tmp)
+        symmetryend = time.time()
+        symmetrycost += symmetryend - symmetrystart
+        # x_tmp,y_tmp = S_symmetry_orthogonal(x_tmp,y_tmp)
+
+        # x_tmp,y_tmp = VW_Gram_Schmidt(x_tmp, y_tmp, V, W)
+        normstart = time.time()
+        xy_norm = (np.dot(x_tmp.T, x_tmp)+np.dot(y_tmp.T, y_tmp))**0.5
+
+        if  xy_norm > 1e-14:
+            x_tmp = x_tmp/xy_norm
+            y_tmp = y_tmp/xy_norm
+
+            V_holder[:,m] = x_tmp[:,0]
+            W_holder[:,m] = y_tmp[:,0]
+            m += 1
+        else:
+            print('vector kicked out during GS orthonormalization')
+        normend = time.time()
+        normcost += normend - normstart
+
+    VWGSend = time.time()
+    VWGScost = VWGSend - VWGSstart
+    # print('GScost',round(GScost/VWGScost *100, 2),'%')
+    # print('normcost',round(normcost/VWGScost *100, 2),'%')
+    # print('symmetrycost', round(symmetrycost/VWGScost *100, 2),'%')
+    # print('check VW orthonormalization')
+    # VW = np.vstack((V_holder[:,:m], W_holder[:,:m]))
+    # WV = np.vstack((W_holder[:,:m], V_holder[:,:m]))
+    # VWWV = np.hstack((VW,WV))
+    # print('check_orthonormal VWWV:',check_orthonormal(VWWV))
+    return V_holder, W_holder, m
+################################################################################
+
+
+
+################################################################################
+def solve_AX_Xla_B(A, omega, Q):
+    ''' AX - XΩ  = Q '''
+
+    Qnorm = np.linalg.norm(Q, axis=0, keepdims = True)
+    Q /= Qnorm
+    N_vectors = len(omega)
+    a, u = np.linalg.eigh(A)
+    ub = np.dot(u.T, Q)
+    ux = np.zeros_like(Q)
+    for k in range(N_vectors):
+        ux[:, k] = ub[:, k]/(a - omega[k])
+    X = np.dot(u, ux)
+
+    X *= Qnorm
+    return X
+################################################################################
+def TDA_A_diag_initial_guess(m, V, hdiag = hdiag):
+    # m is the amount of initial guesses
+    hdiag = hdiag.reshape(-1,)
+    Dsort = hdiag.argsort()
+    for j in range(m):
+        V[Dsort[j], j] = 1.0
+    return V
+
+def sTDA_initial_guess(m, V):
+    sTDA_A_eigenkets = Davidson0(m)
+    # print('sTDA_A_eigenkets', sTDA_A_eigenkets.shape)
+    #diagonalize sTDA_A amtrix
+    V[:, :m] = sTDA_A_eigenkets[:,:m]
+    return V
+################################################################################
+
+################################################################################
+def TDA_A_diag_preconditioner(arg1, arg2, arg3=None, arg4=None, arg5=None, arg6=None, arg7=None, arg8=None, hdiag = hdiag):
+    """ residual[:,index], sub_eigenvalue[:k][index], current_dic, full_guess[:,index], index, W[:,:m], V[:,:m], sub_A """
+    # preconditioners for each corresponding residual
+    residual = arg1
+    sub_eigenvalue = arg2
+    current_dic = arg3
+
+    k = np.shape(residual)[1]
+    t = 1e-14
+
+    # print('hdiag in preconditioner', hdiag.reshape(-1,1).shape)
+    D = np.repeat(hdiag.reshape(-1,1), k, axis=1) - sub_eigenvalue
+    D = np.where( abs(D) < t, np.sign(D)*t, D) # force all values not in domain (-t, t)
+
+    new_guess = residual/D
+
+    return new_guess, current_dic
+################################################################################
+
+
+################################################################################
+# sTDA preconditioner
+def sTDA_preconditioner(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8):
+    """ residual[:,index], sub_eigenvalue[:k][index], current_dic, full_guess[:,index], index, W[:,:m], V[:,:m], sub_A """
+    """ (sTDA_A - λ*I)^-1 B = X """
+    """ AX - Xλ = B """
+    """ columns in B are residuals (in Davidson's loop) to be preconditioned, """
+    residuals = arg1
+    eigen_lambda = arg2
+    current_dic = arg3
+
+    precondition_start = time.time()
+
+    # N_rows = np.shape(B)[0]
+    A_reduced_size = n_occ*max_vir
+    residuals = residuals.reshape(n_occ,n_vir,-1)
+    B = residuals[:,:max_vir,:]
+
+
+    B = B.reshape(A_reduced_size,-1)
+    # B = B.reshape(A_reduced_size, -1)
+    N_vectors = B.shape[1]
+
+    #number of vectors to be preconditioned
+    bnorm = np.linalg.norm(B, axis=0, keepdims = True)
+    #norm of each vectors in B, shape (1,-1)
+    B = B/bnorm
+
+    start = time.time()
+    tol = args.TDA_precondTOL # Convergence tolerance
+    max = 30   # Maximum number of iterations
+
+    V = np.zeros((A_reduced_size, (max+1)*N_vectors))
+    W = np.zeros((A_reduced_size, (max+1)*N_vectors))
+    count = 0
+
+    # now V and W are empty holders, 0 vectors
+    # W = sTDA_mv(V)
+    # count is the amount of vectors that already sit in the holder
+    # in each iteration, V and W will be filled/updated with new guess vectors
+
+    ###########################################
+    #initial guess: (diag(A) - λ)^-1 B.
+    # D is preconditioner for each state
+    t = 1e-10
+    hdiag_m_lambda = np.repeat(hdiag.reshape(-1,1), N_vectors, axis=1) - eigen_lambda
+    hdiag_m_lambda = np.where( abs(hdiag_m_lambda) < t, np.sign(hdiag_m_lambda)*t, hdiag_m_lambda) # <t: returns np.sign(D)*t; else: D
+
+    hdiag_m_lambda = hdiag_m_lambda.reshape(n_occ, n_vir, -1)
+    D = hdiag_m_lambda[:,:max_vir,:].reshape(A_reduced_size,-1)
+    inv_D = 1/D
+
+    # generate initial guess
+    init = B*inv_D
+    V, new_count = Gram_Schmidt_fill_holder(V, count, init)
+    W[:, count:new_count] = sTDA_mv(V[:, count:new_count])
+    count = new_count
+
+    current_dic['preconditioning'] = []
+    mvcost = 0
+    GScost = 0
+    subcost = 0
+    subgencost = 0
+    ####################################################################################
+    for i in range(max):
+        substart = time.time()
+        sub_B = np.dot(V[:,:count].T, B)
+        sub_A = np.dot(V[:,:count].T, W[:,:count])
+        subend = time.time()
+        subgencost += subend - substart
+        #project sTDA_A matrix and vector B into subspace
+        sub_A = symmetrize(sub_A)
+        # size of subspace
+        m = np.shape(sub_A)[0]
+
+        substart = time.time()
+        sub_guess = solve_AX_Xla_B(sub_A, eigen_lambda, sub_B)
+        subend = time.time()
+        subcost += subend - substart
+
+        full_guess = np.dot(V[:,:count], sub_guess)
+        residual = np.dot(W[:,:count], sub_guess) - full_guess*eigen_lambda - B
+
+        r_norms = np.linalg.norm(residual, axis=0).tolist()
+        current_dic['preconditioning'].append({'precondition residual norms': r_norms})
+
+        max_norm = np.max(r_norms)
+        if max_norm < tol or i == (max-1):
+            break
+
+        # index for unconverged residuals
+        index = [r_norms.index(i) for i in r_norms if i > tol]
+        # preconditioning step
+        # only generate new guess from unconverged residuals
+        new_guess = residual[:,index]*inv_D[:,index]
+
+        GSstart = time.time()
+        V, new_count = Gram_Schmidt_fill_holder(V, count, new_guess)
+        GSend = time.time()
+        GScost += GSend - GSstart
+
+
+        mvstart = time.time()
+        W[:, count:new_count] = sTDA_mv(V[:, count:new_count])
+        mvend = time.time()
+        mvcost += mvend - mvstart
+
+        count = new_count
+
+    precondition_end = time.time()
+    precondition_time = precondition_end - precondition_start
+    if i == (max -1):
+        print('_________________ sTDA Preconditioner Failed Due to Iteration Limit _________________')
+        print('sTDA preconditioning failed after ', i, 'steps; ', round(precondition_time, 4), 'seconds')
+        print('current residual norms', r_norms)
+        print('max_norm = ', max_norm)
+        print('orthonormality of V', check_orthonormal(V[:,:count]))
+    else:
+        print('sTDA Preconditioning Done after ', i, 'steps; ', \
+                round(precondition_time, 4), 'seconds')
+        print('subgencost',round(subgencost,4),round(subgencost/precondition_time *100, 2),"%")
+        print('mvcost',round(mvcost,4),round(mvcost/precondition_time *100, 2),"%")
+        print('GScost', round(GScost,4), round(GScost/precondition_time *100, 2),"%")
+        print('subcost', round(subcost,4), round(subcost/precondition_time *100, 2),"%")
+    full_guess *= bnorm
+
+    U = np.zeros((n_occ,n_vir,N_vectors))
+    U[:,:max_vir,:] = full_guess.reshape(n_occ,max_vir,-1)
+
+    if max_vir < n_vir:
+        ''' DX2 - X2*Omega = B2'''
+        B2 = residuals[:,max_vir:,:]
+        B2 = B2.reshape(n_occ*(n_vir-max_vir),-1)
+
+        D2 = hdiag_m_lambda[:,max_vir:,:]
+        D2 = D2.reshape(n_occ*(n_vir-max_vir),-1)
+        X2 = (B2/D2).reshape(n_occ,n_vir-max_vir,-1)
+        U[:,max_vir:,:] = X2
+
+    U = U.reshape(A_size, -1)
+    return U, current_dic
+################################################################################
+
+################################################################################
+# K_inv # exacty the same function with sTDA_preconditioner, just no dic
+# used in Jacobi_precodnitioner
+def K_inv(B, eigen_lambda):
+    # to solve K^(-1)y and K^(-1)u
+    # K = A-λ*I
+    # (sTDA_A - eigen_lambda*I)^-1 B = X
+    # AX - Xλ = B
+    # columns in B are residuals or current guess
+    precondition_start = time.time()
+
+    N_rows = np.shape(B)[0]
+    B = B.reshape(N_rows, -1)
+    N_vectors = np.shape(B)[1]
+
+    #number of vectors to be preconditioned
+    bnorm = np.linalg.norm(B, axis=0, keepdims = True)
+    #norm of each vectors in B, shape (1,-1)
+    B = B/bnorm
+
+    start = time.time()
+    tol = 1e-2    # Convergence tolerance
+    max = 30   # Maximum number of iterations
+
+    V = np.zeros((N_rows, (max+1)*N_vectors))
+    W = np.zeros_like(V)
+    count = 0
+
+    # now V and W are empty holders, 0 vectors
+    # W = sTDA_mv(V)
+    # count is the amount of vectors that already sit in the holder
+    # in each iteration, V and W will be filled/updated with new guess vectors
+    ###########################################
+    #initial guess: (diag(A) - λ)^-1 B.
+    # D is preconditioner for each state
+    t = 1e-10
+    D = np.repeat(hdiag.reshape(-1,1), N_vectors, axis=1) - eigen_lambda
+    D= np.where( abs(D) < t, np.sign(D)*t, D) # <t: returns np.sign(D)*t; else: D
+    inv_D = 1/D
+
+    # generate initial guess
+    init = B*inv_D
+    V, new_count = Gram_Schmidt_fill_holder(V, count, init)
+    W[:, count:new_count] = sTDA_mv(V[:, count:new_count])
+    count = new_count
+    ############################################################################
+    for i in range(0, max):
+        sub_B = np.dot(V[:,:count].T, B)
+        sub_A = np.dot(V[:,:count].T, W[:,:count])
+        #project sTDA_A matrix and vector B into subspace
+        # size of subspace
+        m = np.shape(sub_A)[0]
+        sub_guess = solve_AX_Xla_B(sub_A, eigen_lambda, sub_B)
+        full_guess = np.dot(V[:,:count], sub_guess)
+        residual = np.dot(W[:,:count], sub_guess) - full_guess*eigen_lambda - B
+        r_norms = np.linalg.norm(residual, axis=0).tolist()
+        max_norm = np.max(r_norms)
+
+        if max_norm < tol or i == (max-1):
+            break
+
+        # index for unconverged residuals
+        index = [r_norms.index(i) for i in r_norms if i > tol]
+
+        # preconditioning step
+        # only generate new guess from unconverged residuals
+        new_guess = residual[:,index]*inv_D[:,index]
+
+        V, new_count = Gram_Schmidt_fill_holder(V, count, new_guess)
+        W[:, count:new_count] = sTDA_mv(V[:, count:new_count])
+        count = new_count
+
+    precondition_end = time.time()
+    precondition_time = precondition_end - precondition_start
+    if i == (max -1):
+        print('_________________ K inverse Failed Due to Iteration Limit _________________')
+        print('K inverse  failed after ', i, 'steps; ', round(precondition_time, 4), 'seconds')
+        print('current residual norms', r_norms)
+        print('max_norm = ', max_norm)
+        print('orthonormality of V', check_orthonormal(V[:,:count]))
+    else:
+        print('K inverse Done after ', i, 'steps; ', round(precondition_time, 4), 'seconds')
+    return full_guess*bnorm
+################################################################################
+
+################################################################################
+def Jacobi_preconditioner(arg1, arg2, arg3, arg4, arg5=None, arg6=None, arg7=None, arg8=None):
+    """ residual[:,index], sub_eigenvalue[:k][index], current_dic, full_guess[:,index], index, W[:,:m], V[:,:m], sub_A """
+    """    (1-uu*)(A-λ*I)(1-uu*)t = -B"""
+    """    B is residual, we want to solve t """
+    """    z approximates t """
+    """    z = (A-λ*I)^(-1)*(-B) + α(A-λ*I)^(-1) * u"""
+    """    where α = [u*(A-λ*I)^(-1)y]/[u*(A-λ*I)^(-1)u] """
+    """    first is to solve (A-λ*I)^(-1)y and (A-λ*I)^(-1)u """
+
+    B = arg1
+    eigen_lambda = arg2
+    current_dic = arg3
+    current_guess = arg4
+
+    u = current_guess
+    K_inv_y = K_inv(-B, eigen_lambda)
+    K_inv_u = K_inv(current_guess, eigen_lambda)
+    n = np.multiply(u, K_inv_y).sum(axis=0)
+    d = np.multiply(u, K_inv_u).sum(axis=0)
+    Alpha = n/d
+
+    z = K_inv_y -  Alpha*K_inv_u
+    return z, current_dic
+################################################################################
+
+################################################################################
+# original simple Davidson, to solve eigenvalues and eigenkets of sTDA_A matrix
+def Davidson0(k):
+    print('sTDA nstate =', k)
+    sTDA_D_start = time.time()
+    tol = args.TDA_initialTOL # Convergence tolerance
+    max = 30
+    #################################################
+    # m is size of subspace
+    m = min([k+8, 2*k, A_size])
+    V = np.zeros((A_reduced_size, max*k + m))
+    W = np.zeros_like(V)
+    # positions of hdiag with lowest values set as 1
+
+    V = TDA_A_diag_initial_guess(m, V, hdiag = max_vir_hdiag)
+    W[:, :m] = sTDA_mv(V[:, :m])
+    # create transformed guess vectors
+
+    #generate initial guess and put in holders V and W
+    ############################################################################
+    for i in range(max):
+        sub_A = np.dot(V[:,:m].T, W[:,:m])
+        sub_A = symmetrize(sub_A)
+        sub_eigenvalue, sub_eigenket = np.linalg.eigh(sub_A)
+        # Diagonalize the subspace Hamiltonian, and sorted.
+        #sub_eigenvalue[:k] are smallest k eigenvalues
+        full_guess = np.dot(V[:,:m], sub_eigenket[:, :k])
+        residual = np.dot(W[:,:m], sub_eigenket[:,:k]) - full_guess * sub_eigenvalue[:k]
+
+        r_norms = np.linalg.norm(residual, axis=0).tolist()
+        max_norm = np.max(r_norms)
+        if max_norm < tol or i == (max-1):
+            break
+        # index for unconverged residuals
+        index = [r_norms.index(i) for i in r_norms if i > tol]
+        ########################################
+        # preconditioning step
+        # only generate new guess from unconverged residuals
+        new_guess, Y = TDA_A_diag_preconditioner(residual[:,index], sub_eigenvalue[:k][index], hdiag = max_vir_hdiag)
+        # orthonormalize the new guesses against old guesses and put into V holder
+        V, new_m = Gram_Schmidt_fill_holder(V, m, new_guess)
+        W[:, m:new_m] = sTDA_mv(V[:, m:new_m])
+        m = new_m
+    ############################################################################
+
+
+    sTDA_D_end = time.time()
+    sTDA_D = sTDA_D_end - sTDA_D_start
+    print('sTDA A diagonalization:','threshold =', tol, '; in', i, 'steps ', round(sTDA_D, 4), 'seconds' )
+    print('sTDA excitation energies:')
+    print(sub_eigenvalue[:k]*27.211386245988)
+
+    # U = np.zeros((n_occ * n_vir, k))
+    # U[:n_occ * max_vir,:] = full_guess
+
+    U = np.zeros((n_occ,n_vir,k))
+    U[:,:max_vir,:] = full_guess.reshape(n_occ,max_vir,k)
+    U = U.reshape(A_size, k)
+    return U
+################################################################################
+
+
+################################################################################
+def sTDDFT_preconditioner_subspace_eigen_solver(a, b, sigma, pi, p, q, omega):
+    ''' [ a b ] x - [ σ   π] x  Ω = p '''
+    ''' [ b a ] y   [-π  -σ] y    = q '''
+
+    ##############################
+    ''' normalize the RHS '''
+    pq = np.vstack((p,q))
+    pqnorm = np.linalg.norm(pq, axis=0, keepdims = True)
+    # print('pqnorm', pqnorm)
+    p /= pqnorm
+    q /= pqnorm
+    ##############################
+    d = abs(np.diag(sigma))
+    # d is an one-dimension matrix
+    d_mh = d**(-0.5)
+    # d_h = d**0.5
+
+    ''' LU = d^−1/2 (σ − π) d^−1/2 '''
+    ''' A = PLU '''
+    ''' P is identity matrix only when A is diagonally dominant '''
+    s_m_p = d_mh.reshape(-1,1) * (sigma - pi) * d_mh.reshape(1,-1)
+    P_permutation, L, U = scipy.linalg.lu(s_m_p)
+    # print(np.diag(P_permutation))
+    L = np.dot(P_permutation, L)
+
+    L_inv = np.linalg.inv(L)
+    U_inv = np.linalg.inv(U)
+
+    p_p_q_tilde = np.dot(L_inv, d_mh.reshape(-1,1)*(p+q))
+    p_m_q_tilde = np.dot(U_inv.T, d_mh.reshape(-1,1)*(p-q))
+
+    ''' a ̃−b ̃= U^-T d^−1/2 (a−b) d^-1/2 U^-1 = GG^T '''
+    GGT = np.linalg.multi_dot([U_inv.T, d_mh.reshape(-1,1)*(a-b)*d_mh.reshape(1,-1), U_inv])
+
+    G = scipy.linalg.cholesky(GGT, lower=True) # lower triangle matrix
+    G_inv = np.linalg.inv(G)
+
+    ''' a ̃+ b ̃= L^−1 d^−1/2 (a+b) d^−1/2 L^−T '''
+    ''' M = G^T (a ̃+ b ̃) G '''
+    a_p_b_tilde = np.linalg.multi_dot([L_inv, d_mh.reshape(-1,1)*(a+b)*d_mh.reshape(1,-1), L_inv.T])
+    M = np.linalg.multi_dot([G.T, a_p_b_tilde, G])
+    T = np.dot(G.T, p_p_q_tilde) + np.dot(G_inv, p_m_q_tilde * omega.reshape(1,-1))
+
+    Z = solve_AX_Xla_B(M, omega**2, T)
+
+    ''' (x ̃+ y ̃) = GZ '''
+    ''' x + y = d^-1/2 L^-T (x ̃+ y ̃) '''
+    ''' x - y = d^-1/2 U^-1 (x ̃- y ̃) '''
+    x_p_y_tilde = np.dot(G,Z)
+    x_p_y = d_mh.reshape(-1,1) * np.dot(L_inv.T, x_p_y_tilde)
+    # x_m_y = d_mh.reshape(-1,1) * np.linalg.multi_dot([U_inv, G_inv.T, Z])
+    x_m_y_tilde = (np.dot(a_p_b_tilde, x_p_y_tilde) - p_p_q_tilde)/omega
+    x_m_y = d_mh.reshape(-1,1) * np.dot(U_inv, x_m_y_tilde)
+
+    x = (x_p_y + x_m_y)/2
+    y = x_p_y - x
+
+    x *= pqnorm
+    y *= pqnorm
+
+    return x, y
+################################################################################
+
+################################################################################
+def Qx(V, x):
+    """ Qx = (1 - V*V.T)*x = x - V*V.T*x  """
+    return x - einsum('ij, jk, kl -> il', V, V.T, x)
+################################################################################
+
+################################################################################
+def on_the_fly_Hx(W, V, sub_A, x):
+    """ on-the-fly compute H'x """
+    """ H′ ≡ W*V.T + V*W.T − V*a*V.T + Q*K*Q"""
+    """ K approximates H, here K = sTDA_A"""
+    """ H′ ≡ W*V.T + V*W.T − V*a*V.T + (1-V*V.T)sTDA_A(1-V*V.T)"""
+    """ H′x ≡ a + b − c + d """
+    a = einsum('ij, jk, kl -> il', W, V.T, x)
+    b = einsum('ij, jk, kl -> il', V, W.T, x)
+    c = einsum('ij, jk, kl, lm -> im', V, sub_A, V.T, x)
+    d = Qx(V, sTDA_mv(Qx(V, x)))
+    Hx = a + b - c + d
+    return Hx
+################################################################################
+
+################################################################################
+# to diagonalize the H'
+def new_ES(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8):
+    """ residual[:,index], sub_eigenvalue[:k][index], current_dic, full_guess[:,index], index, W[:,:m], V[:,:m], sub_A """
+    current_dic = arg3
+    return_index = arg5
+    W_H = arg6
+    V_H = arg7
+    sub_A_H = arg8
+
+    """ new eigenvalue solver """
+    """ the traditional Davidson to diagonalize the H' matrix """
+    """ W_H, V_H, sub_A_H are from the exact H """
+
+    sTDA_D_start = time.time()
+    tol = args.eigensolver_tol # Convergence tolerance
+    max = 30
+    #################################################
+    # m is size of subspace
+    k = args.nstates
+    m = min([k+8, 2*k, A_size])
+    # m is the amount of initial guesses
+    V = np.zeros((A_size, max*k + m))
+    W = np.zeros_like(V)
+    # positions of hdiag with lowest values set as 1
+
+    # sTDA as initial guess
+    V = sTDA_initial_guess(m, V)
+
+    W[:,:m] = on_the_fly_Hx(W_H, V_H, sub_A_H, V[:, :m])
+    # create transformed guess vectors
+
+    #generate initial guess and put in holders V and W
+    ###########################################################################################
+    for i in range(max):
+        sub_A = np.dot(V[:,:m].T, W[:,:m])
+        sub_eigenvalue, sub_eigenket = np.linalg.eigh(sub_A)
+#             print(sub_eigenvalue[:k]*27.211386245988)
+        # Diagonalize the subspace Hamiltonian, and sorted.
+        #sub_eigenvalue[:k] are smallest k eigenvalues
+
+        residual = np.dot(W[:,:m], sub_eigenket[:,:k]) - np.dot(V[:,:m], sub_eigenket[:,:k] * sub_eigenvalue[:k])
+
+        r_norms = np.linalg.norm(residual, axis=0).tolist()
+#             print(r_norms)
+        # largest residual norm
+        max_norm = np.max(r_norms)
+        if max_norm < tol or i == (max-1):
+            break
+        # index for unconverged residuals
+        index = [r_norms.index(i) for i in r_norms if i > tol]
+        ########################################
+        # preconditioning step
+        # only generate new guess from unconverged residuals
+
+        new_guess, Y = TDA_A_diag_preconditioner(residual[:,index], sub_eigenvalue[:k][index])
+        # Y doesn't matter
+
+        # orthonormalize the new guesses against old guesses and put into V holder
+        V, new_m = Gram_Schmidt_fill_holder(V, m, new_guess)
+#             print(check_orthonormal(V[:,:new_m]))
+        W[:, m:new_m] = on_the_fly_Hx(W_H, V_H, sub_A_H, V[:, m:new_m])
+        m = new_m
+    ###########################################################################################
+    full_guess = np.dot(V[:,:m], sub_eigenket[:,:k])
+
+    sTDA_D_end = time.time()
+    sTDA_D = sTDA_D_end - sTDA_D_start
+    print('H_app diagonalization:','threshold =', tol, '; in', i, 'steps ', round(sTDA_D, 2), 'seconds' )
+#         print('H_app', sub_eigenvalue[:k]*27.211386245988)
+
+    return full_guess[:,return_index], current_dic
+################################################################################
+
+################################################################################
+# a dictionary for TDA initial guess and precodnitioner
+TDA_i_key = ['sTDA', 'Adiag']
+TDA_i_func = [sTDA_initial_guess, TDA_A_diag_initial_guess]
+TDA_i_lib = dict(zip(TDA_i_key, TDA_i_func))
+
+TDA_p_key = ['sTDA', 'Adiag', 'Jacobi', 'new_ES']
+TDA_p_func = [sTDA_preconditioner, TDA_A_diag_preconditioner, \
+Jacobi_preconditioner, new_ES]
+TDA_p_lib = dict(zip(TDA_p_key, TDA_p_func))
+################################################################################
+
+################################################################################
+#Davidson frame, where we can choose different initial guess and preconditioner
+def Davidson(k, tol, init,prec):
+    D_start = time.time()
+    Davidson_dic = {}
+    Davidson_dic['iteration'] = []
+    iteration_list = Davidson_dic['iteration']
+
+    initial_guess = TDA_i_lib[init]
+    new_guess_generator = TDA_p_lib[prec]
+
+    print('Initial guess:  ', init)
+    print('Preconditioner: ', prec)
+    print('A matrix size = ', A_size,'*', A_size)
+    max = args.max
+    # Maximum number of iterations
+
+    m = min([k + args.TDA_extrainitial, 2*k, A_size])
+    # amount of initila guess
+    #################################################
+    # generate initial guess
+
+    V = np.zeros((A_size, max*k + m))
+    W = np.zeros_like(V)
+
+    init_start = time.time()
+    V = initial_guess(m, V)
+    init_end = time.time()
+    init_time = init_end - init_start
+
+    print('Intial guess time:', round(init_time, 4), 'seconds')
+    #generate initial guess and put in holders V and W
+    # m is size of subspace
+
+    # W = Av, create transformed guess vectors
+    W[:, :m] = TDA_matrix_vector(V[:, :m])
+
+    # time cost for preconditioning
+    Pcost = 0
+    ###########################################################################################
+    for ii in range(max):
+        print('Iteration ', ii)
+
+        # sub_A is subspace A matrix
+        sub_A = np.dot(V[:,:m].T, W[:,:m])
+        sub_A = symmetrize(sub_A)
+        print('subspace size: ', np.shape(sub_A)[0])
+
+        sub_eigenvalue, sub_eigenket = np.linalg.eigh(sub_A)
+        # print(sub_eigenvalue[:k])
+        # Diagonalize the subspace Hamiltonian, and sorted.
+        #sub_eigenvalue[:k] are smallest k eigenvalues
+        full_guess = np.dot(V[:,:m], sub_eigenket[:, :k])
+
+        residual = np.dot(W[:,:m], sub_eigenket[:,:k]) - full_guess * sub_eigenvalue[:k]
+
+        r_norms = np.linalg.norm(residual, axis=0).tolist()
+
+        # largest residual norm
+        max_norm = np.max(r_norms)
+
+        iteration_list.append({})
+        current_dic = iteration_list[ii]
+        current_dic['residual norms'] = r_norms
+
+        print('maximum residual norm', max_norm)
+        if max_norm < tol or ii == (max-1):
+            print('Davidson procedure aborted')
+            break
+
+        # index for unconverged residuals
+        index = [r_norms.index(i) for i in r_norms if i > tol]
+
+        ########################################
+        # generate new guess
+        P_start = time.time()
+        new_guess, current_dic = new_guess_generator(
+                                    arg1 = residual[:,index],
+                                    arg2 = sub_eigenvalue[:k][index],
+                                    arg3 = current_dic,
+                                    arg4 = full_guess[:,index],
+                                    arg5 = index,
+                                    arg6 = W[:,:m],
+                                    arg7 = V[:,:m],
+                                    arg8 = sub_A)
+        P_end = time.time()
+
+        iteration_list[ii] = current_dic
+
+        Pcost += P_end - P_start
+
+        # orthonormalize the new guesses against old guesses and put into V holder
+        V, new_m = Gram_Schmidt_fill_holder(V, m, new_guess)
+        print('m,new_m',m,new_m)
+        W[:, m:new_m] = TDA_matrix_vector(V[:, m:new_m])
+        print('new generated guesses:', new_m - m)
+        m = new_m
+
+    energies = sub_eigenvalue[:k]*27.211386245988
+
+
+    D_end = time.time()
+    Dcost = D_end - D_start
+    Davidson_dic['initial guess'] = init
+    Davidson_dic['preconditioner'] = prec
+    Davidson_dic['nstate'] = k
+    Davidson_dic['molecule'] = basename
+    Davidson_dic['method'] = args.method
+    Davidson_dic['functional'] = args.functional
+    Davidson_dic['threshold'] = tol
+    Davidson_dic['SCF time'] = kernel_t
+    Davidson_dic['Initial guess time'] = init_time
+    Davidson_dic['initial guess threshold'] = args.TDA_initialTOL
+    Davidson_dic['New guess generating time'] = Pcost
+    Davidson_dic['preconditioner threshold'] = args.TDA_precondTOL
+    Davidson_dic['total time'] = Dcost
+    Davidson_dic['iterations'] = ii+1
+    Davidson_dic['A matrix size'] = A_size
+    Davidson_dic['final subspace size'] = np.shape(sub_A)[0]
+    Davidson_dic['excitation energy(eV)'] = energies.tolist()
+    # Davidson_dic['semiempirical_difference'] = difference
+    # Davidson_dic['overlap'] = overlap
+    Davidson_dic['ax'] = a_x
+    Davidson_dic['alpha'] = alpha
+    Davidson_dic['beta'] = beta
+    Davidson_dic['virtual truncation tol'] = args.truncate_virtual
+    Davidson_dic['n_occ'] = n_occ
+    Davidson_dic['n_vir'] = n_vir
+    Davidson_dic['max_vir'] = max_vir
+    ###########################################################################################
+    if ii == max-1:
+        print('============ Davidson Failed Due to Iteration Limit ==============')
+        print('Davidson failed after ', round(Dcost, 4), 'seconds')
+        print('current residual norms', r_norms)
+        print('max_norm = ', max_norm)
+    else:
+        print('Davidson done after ', round(Dcost, 4), 'seconds')
+        print('Total steps =', ii+1)
+        print('Final subspace shape = ', np.shape(sub_A))
+        print('Preconditioning time:', round(Pcost, 4), round(Pcost/Dcost*100,2), '%')
+    return energies, full_guess, Davidson_dic
+################################################################################
+
+
+
+def TDDFT_A_diag_initial_guess(V_holder, W_holder, new_m, hdiag = hdiag):
+    hdiag = hdiag.reshape(-1,)
+    Dsort = hdiag.argsort()
+    V_holder = TDA_A_diag_initial_guess(new_m, V_holder, hdiag = hdiag)
+    energies = hdiag[Dsort][:new_m]*27.211386245988
+    return V_holder, W_holder, new_m, energies, V_holder[:,:new_m], W_holder[:,:new_m]
+
+################################################################################
+def TDDFT_A_diag_preconditioner(R_x, R_y, omega, hdiag = hdiag):
+    # preconditioners for each corresponding residual
+    hdiag = hdiag.reshape(-1,1)
+    # print('hdiag', hdiag.shape)
+    k = R_x.shape[1]
+#     print('omega.shape',omega.shape)
+    t = 1e-14
+
+    d = np.repeat(hdiag.reshape(-1,1), k, axis=1)
+
+    D_x = d - omega
+    D_x = np.where( abs(D_x) < t, np.sign(D_x)*t, D_x)
+    D_x_inv = D_x**-1
+
+    D_y = d + omega
+    D_y = np.where( abs(D_y) < t, np.sign(D_y)*t, D_y)
+    # force all values not in domain (-t, t)
+    D_y_inv = D_y**-1
+
+#     print('R_x.shape, D_x.shape',R_x.shape, D_x.shape)
+    X_new = R_x*D_x_inv
+    Y_new = R_y*D_y_inv
+
+    return X_new, Y_new
+################################################################################
+
+################################################################################
+def TDDFT_subspace_eigen_solver(a, b, sigma, pi, k):
+    ''' [ a b ] x - [ σ   π] x  w = 0 '''
+    ''' [ b a ] y   [-π  -σ] y    = 0 '''
+
+    d = abs(np.diag(sigma))
+    # print(d)
+    # d is an one-dimension matrix
+    d_mh = d**(-0.5)
+
+
+    s_m_p = d_mh.reshape(-1,1) * (sigma - pi) * d_mh.reshape(1,-1)
+
+    '''LU = d^−1/2 (σ − π) d^−1/2'''
+    ''' A = PLU '''
+    ''' if A is diagonally dominant, P is identity matrix (in fact not always) '''
+    P_permutation, L, U = scipy.linalg.lu(s_m_p)
+    # print(np.diag(P_permutation))
+
+    L = np.dot(P_permutation, L)
+
+    L_inv = np.linalg.inv(L)
+    U_inv = np.linalg.inv(U)
+
+    ''' a ̃−b ̃= U^-T d^−1/2 (a−b) d^-1/2 U^-1 = GG^T '''
+    GGT = np.linalg.multi_dot([U_inv.T, d_mh.reshape(-1,1)*(a-b)*d_mh.reshape(1,-1), U_inv])
+
+    G = scipy.linalg.cholesky(GGT, lower=True)
+    # lower triangle matrix
+    G_inv = np.linalg.inv(G)
+
+    ''' M = G^T L^−1 d^−1/2 (a+b) d^−1/2 L^−T G '''
+    M = np.linalg.multi_dot([G.T, L_inv, d_mh.reshape(-1,1)*(a+b)*d_mh.reshape(1,-1), L_inv.T, G])
+
+    omega2, Z = np.linalg.eigh(M)
+    omega = (omega2**0.5)[:k]
+    # print(omega*27.211386245988)
+    Z = Z[:,:k]
+
+    ''' It requires Z^T Z = 1/Ω '''
+    ''' x+y = d^−1/2 L^−T GZ Ω^-0.5 '''
+    ''' x−y = d^−1/2 U^−1 G^−T Z Ω^0.5 '''
+
+    x_p_y = d_mh.reshape(-1,1) * np.linalg.multi_dot([L_inv.T, G, Z])     * (np.array(omega)**-0.5).reshape(1,-1)
+    x_m_y = d_mh.reshape(-1,1) * np.linalg.multi_dot([U_inv, G_inv.T, Z]) * (np.array(omega)**0.5).reshape(1,-1)
+
+    x = (x_p_y + x_m_y)/2
+    y = x_p_y - x
+
+    # norm = np.linalg.multi_dot([x.T, sigma, x])
+    # norm += np.linalg.multi_dot([x.T, pi, y])
+    # norm -= np.linalg.multi_dot([y.T, pi, x])
+    # norm -= np.linalg.multi_dot([y.T, sigma, y])
+    # print(norm)
+
+    return omega, x, y
+################################################################################
+
+################################################################################
+def sTDDFT_eigen_solver(k):
+    ''' [ A' B' ] x - [ σ   π] x  w = 0'''
+    ''' [ B' A' ] y   [-π  -σ] y    = 0'''
+    tol=args.TDDFT_initialTOL
+    max = 30
+    sTDDFT_start = time.time()
+    print('setting initial guess')
+    m = 0
+    new_m = min([k+8, 2*k, A_reduced_size])
+    # new_m = min([3*k, A_size])
+    # print('initial new_m = ', new_m)
+    V_holder = np.zeros((A_reduced_size, (max+1)*k))
+    W_holder = np.zeros_like(V_holder)
+
+    U1_holder = np.zeros_like(V_holder)
+    U2_holder = np.zeros_like(V_holder)
+    # set up initial guess VW, transformed vectors U1&U2
+
+    V_holder, W_holder, new_m, energies, Xig, Yig = \
+    TDDFT_A_diag_initial_guess(V_holder, W_holder, new_m, hdiag = max_vir_hdiag)
+#     print('initial guess done')
+    ##############################
+
+    subcost = 0
+    Pcost = 0
+    MVcost = 0
+    GScost = 0
+    subgencost = 0
+    for ii in range(max):
+        ###############################################################
+        # print('ii = ', ii)
+        # creating the subspace
+        V = V_holder[:,:new_m]
+        W = W_holder[:,:new_m]
+
+        # U1 = AV + BW
+        # U2 = AW + BV
+
+        # show_memory_info('before sTDDFT_mv')
+        MV_start = time.time()
+        U1_holder[:, m:new_m], U2_holder[:, m:new_m] = \
+                                        sTDDFT_mv(V[:, m:new_m], W[:, m:new_m])
+        MV_end = time.time()
+        MVcost += MV_end - MV_start
+        # show_memory_info('after sTDDFT_mv')
+
+        U1 = U1_holder[:,:new_m]
+        U2 = U2_holder[:,:new_m]
+
+        subgenstart = time.time()
+        a = np.dot(V.T, U1) + np.dot(W.T, U2)
+        b = np.dot(V.T, U2) + np.dot(W.T, U1)
+        sigma = np.dot(V.T, V) - np.dot(W.T, W)
+        pi = np.dot(V.T, W) - np.dot(W.T, V)
+
+        a = symmetrize(a)
+        b = symmetrize(b)
+        sigma = symmetrize(sigma)
+        pi = anti_symmetrize(pi)
+
+        subgenend = time.time()
+        subgencost += subgenend - subgenstart
+        ###############################################################
+
+        ###############################################################
+#         solve the eigenvalue omega in the subspace
+        subcost_start = time.time()
+        omega, x, y = TDDFT_subspace_eigen_solver(a, b, sigma, pi, k)
+        subcost_end = time.time()
+        subcost += subcost_end - subcost_start
+        ###############################################################
+        # compute the residual
+        # R_x = U1x + U2y - (Vx + Wy)omega
+        # R_y = U2x + U1y + (Wx + Vy)omega
+        # R_x = np.dot(U1,x) + np.dot(U2,y) - (np.dot(V,x) + np.dot(W,y))*omega
+        # R_y = np.dot(U2,x) + np.dot(U1,y) + (np.dot(W,x) + np.dot(V,y))*omega
+
+        U1x = np.dot(U1,x)
+        U2x = np.dot(U2,x)
+        Vx = np.dot(V,x)
+        Wx = np.dot(W,x)
+
+        U1y = np.dot(U1,y)
+        U2y = np.dot(U2,y)
+        Vy = np.dot(V,y)
+        Wy = np.dot(W,y)
+
+        X_full = Vx + Wy
+        Y_full = Wx + Vy
+
+        R_x = U1x + U2y - X_full*omega
+        R_y = U2x + U1y + Y_full*omega
+
+        residual = np.vstack((R_x, R_y))
+        r_norms = np.linalg.norm(residual, axis=0).tolist()
+#         print('r_norms', r_norms)
+
+        if np.max(r_norms) < tol or ii == (max -1):
+            break
+        # index for unconverged residuals
+        index = [r_norms.index(i) for i in r_norms if i > tol]
+#         print('index', index)
+        ###############################################################
+
+        ########################################################################
+        # preconditioning step
+        X_new, Y_new = TDDFT_A_diag_preconditioner(\
+                R_x[:,index], R_y[:,index], omega[index], hdiag = max_vir_hdiag)
+        ########################################################################
+
+        ###############################################################
+        # GS and symmetric orthonormalization
+        m = new_m
+        GScost_start = time.time()
+        V_holder, W_holder, new_m = \
+                VW_Gram_Schmidt_fill_holder(V_holder, W_holder, m, X_new, Y_new)
+        GScost_end = time.time()
+        GScost += GScost_end - GScost_start
+
+        if new_m == m:
+            print('All new guesses kicked out during GS orthonormalization')
+            break
+        ###############################################################
+
+    sTDDFT_end = time.time()
+
+    sTDDFT_cost = sTDDFT_end - sTDDFT_start
+
+    if ii == (max -1):
+        print('========= sTD-DFT Failed Due to Iteration Limit==================')
+        print('sTD-DFT failed after ', ii+1, 'iterations  ', round(sTDDFT_cost, 4), 'seconds')
+        print('current residual norms', r_norms)
+        print('max_norm = ', np.max(r_norms))
+    else:
+        print('sTDDFT Converged after ', ii+1, 'iterations  ', round(sTDDFT_cost, 4), 'seconds')
+        print('final subspace', sigma.shape)
+        print('Pcost', round(Pcost,4), round(Pcost/sTDDFT_cost * 100,2),'%')
+        print('MVcost', round(MVcost,4), round(MVcost/sTDDFT_cost * 100,2),'%')
+        print('GScost', round(GScost,4), round(GScost/sTDDFT_cost * 100,2),'%')
+        print('subcost', round(subcost,4), round(subcost/sTDDFT_cost * 100,2),'%')
+        print('subgencost', round(subgencost,4), round(subgencost/sTDDFT_cost * 100,2),'%')
+
+    X = np.zeros((n_occ,n_vir,k))
+    Y = np.zeros((n_occ,n_vir,k))
+
+    X[:,:max_vir,:] = X_full.reshape(n_occ,max_vir,-1)
+    Y[:,:max_vir,:] = Y_full.reshape(n_occ,max_vir,-1)
+
+    X = X.reshape(A_size, -1)
+    Y = Y.reshape(A_size, -1)
+
+    energies = omega*27.211386245988
+    print('sTDDFT excitation energy:')
+    print(energies)
+    return energies, X, Y
+################################################################################
+
+################################################################################
+def sTDDFT_initial_guess(V_holder, W_holder, new_m):
+    energies, X_new_backup, Y_new_backup = sTDDFT_eigen_solver(new_m)
+    # energies, X_new, Y_new = sTDDFT_eigen_solver(new_m)
+    V_holder, W_holder, new_m = VW_Gram_Schmidt_fill_holder\
+                            (V_holder, W_holder, 0,  X_new_backup, Y_new_backup)
+    return V_holder, W_holder, new_m, energies, X_new_backup, Y_new_backup
+################################################################################
+
+################################################################################
+def sTDDFT_preconditioner(Rx, Ry, omega):
+    ''' [ A B ] - [1  0]X  w = P'''
+    ''' [ B A ]   [0 -1]Y    = Q'''
+    ''' P = Rx '''
+    ''' Q = Ry '''
+    tol = args.TDDFT_precondTOL
+    print('sTDDFT_preconditioner conv', tol)
+    max = 30
+    sTDDFT_start = time.time()
+    k = len(omega)
+    m = 0
+
+    Rx = Rx.reshape(n_occ,n_vir,-1)
+    Ry = Ry.reshape(n_occ,n_vir,-1)
+
+    P = Rx[:,:max_vir,:].reshape(A_reduced_size,-1)
+    Q = Ry[:,:max_vir,:].reshape(A_reduced_size,-1)
+
+    initial_start = time.time()
+    V_holder = np.zeros((A_reduced_size, (max+1)*k))
+    W_holder = np.zeros_like(V_holder)
+
+    U1_holder = np.zeros_like(V_holder)
+    U2_holder = np.zeros_like(V_holder)
+
+    ##############################
+    '''normalzie the RHS'''
+    PQ = np.vstack((P,Q))
+    pqnorm = np.linalg.norm(PQ, axis=0, keepdims = True)
+
+    # print('pqnorm', pqnorm)
+    P /= pqnorm
+    Q /= pqnorm
+
+    ##############################
+
+    ##############################
+    # setting up initial guess
+    X_new, Y_new  = TDDFT_A_diag_preconditioner(P, Q, omega, hdiag = max_vir_hdiag)
+    V_holder, W_holder, new_m = \
+            VW_Gram_Schmidt_fill_holder(V_holder, W_holder, 0,  X_new, Y_new)
+    initial_end = time.time()
+    initial_cost = initial_end - initial_start
+    print('new_m =', new_m)
+    print('diagonal initial guess done')
+    ##############################
+    subcost = 0
+    Pcost = 0
+    MVcost = 0
+    GScost = 0
+    subgencost = 0
+    symmetrycost = 0
+    for ii in range(max):
+#         print('||||____________________Iteration', ii, '_________')
+        ###############################################################
+        # creating the subspace
+        V = V_holder[:,:new_m]
+        W = W_holder[:,:new_m]
+
+        # U1 = AV + BW
+        # U2 = AW + BV
+
+        MV_start = time.time()
+        U1_holder[:, m:new_m], U2_holder[:, m:new_m] = \
+                                        sTDDFT_mv(V[:, m:new_m], W[:, m:new_m])
+        MV_end = time.time()
+        MVcost += MV_end - MV_start
+
+        U1 = U1_holder[:,:new_m]
+        U2 = U2_holder[:,:new_m]
+
+        subgenstart = time.time()
+        a = np.dot(V.T, U1)
+        a += np.dot(W.T, U2)
+
+        b = np.dot(V.T, U2)
+        b += np.dot(W.T, U1)
+
+        sigma = np.dot(V.T, V)
+        sigma -= np.dot(W.T, W)
+
+        pi = np.dot(V.T, W)
+        pi -= np.dot(W.T, V)
+
+        # p = VP + WQ
+        # q = WP + VQ
+        p = np.dot(V.T, P)
+        p += np.dot(W.T, Q)
+
+        q = np.dot(W.T, P)
+        q += np.dot(V.T, Q)
+
+        subgenend = time.time()
+        subgencost += subgenend - subgenstart
+
+        symmetrystart = time.time()
+        a = symmetrize(a)
+        b = symmetrize(b)
+        sigma = symmetrize(sigma)
+        pi = anti_symmetrize(pi)
+        symmetryend = time.time()
+        symmetrycost += symmetryend - symmetrystart
+        # print('sigma.shape', sigma.shape)
+        ###############################################################
+
+        ###############################################################
+        # solve the x & y in the subspace
+        subcost_start = time.time()
+        x, y = sTDDFT_preconditioner_subspace_eigen_solver(\
+                                                  a, b, sigma, pi, p, q, omega)
+        subcost_end = time.time()
+        subcost += subcost_end - subcost_start
+        ###############################################################
+
+        ###############################################################
+        # compute the residual
+        # R_x = U1x + U2y - (Vx + Wy)omega
+        # R_y = U2x + U1y + (Wx + Vy)omega
+        # R_x = np.dot(U1,x) + np.dot(U2,y) - (np.dot(V,x) + np.dot(W,y))*omega - P
+        # R_y = np.dot(U2,x) + np.dot(U1,y) + (np.dot(W,x) + np.dot(V,y))*omega - Q
+
+        # U1x = np.dot(U1,x)
+        # U2x = np.dot(U2,x)
+        # Vx = np.dot(V,x)
+        # Wx = np.dot(W,x)
+        #
+        # U1y = np.dot(U1,y)
+        # U2y = np.dot(U2,y)
+        # Vy = np.dot(V,y)
+        # Wy = np.dot(W,y)
+        #
+        # X_full = Vx + Wy
+        # Y_full = Wx + Vy
+        #
+        # R_x = U1x + U2y - X_full*omega - P
+        # R_y = U2x + U1y + Y_full*omega - Q
+
+        X_full = np.dot(V,x)
+        X_full += np.dot(W,y)
+
+        Y_full = np.dot(W,x)
+        Y_full += np.dot(V,y)
+
+        R_x = np.dot(U1,x)
+        R_x += np.dot(U2,y)
+        R_x -= X_full*omega
+        R_x -= P
+
+        R_y = np.dot(U2,x)
+        R_y += np.dot(U1,y)
+        R_y += Y_full*omega
+        R_y -= Q
+
+        residual = np.vstack((R_x,R_y))
+#         print('residual.shape', residual.shape)
+        r_norms = np.linalg.norm(residual, axis=0).tolist()
+#         print('r_norms', r_norms)
+        if np.max(r_norms) < tol or ii == (max -1):
+            break
+        # index for unconverged residuals
+        index = [r_norms.index(i) for i in r_norms if i > tol]
+#         print('index', index)
+        ########################################################################
+
+        ########################################################################
+        # preconditioning step
+        Pstart = time.time()
+        X_new, Y_new = TDDFT_A_diag_preconditioner(R_x[:,index], R_y[:,index], \
+                                            omega[index], hdiag = max_vir_hdiag)
+        Pend = time.time()
+        Pcost += Pend - Pstart
+        ########################################################################
+
+        ########################################################################
+        # GS and symmetric orthonormalization
+        m = new_m
+        GS_start = time.time()
+        V_holder, W_holder, new_m = VW_Gram_Schmidt_fill_holder(\
+                                            V_holder, W_holder, m, X_new, Y_new)
+        GS_end = time.time()
+        GScost += GS_end - GS_start
+
+#         print('m & new_m', m, new_m)
+        if new_m == m:
+            print('All new guesses kicked out during GS orthonormalization')
+            break
+        ###############################################################
+
+    sTDDFT_end = time.time()
+
+    sTDDFT_precond_cost = sTDDFT_end - sTDDFT_start
+
+    if ii == (max -1):
+        print('========== sTDDFT_precond Failed Due to Iteration Limit==========')
+        print('sTDDFT_precond failed after ', ii+1, 'iterations  ', round(sTDDFT_precond_cost, 4), 'seconds')
+        print('current residual norms', r_norms)
+        print('max_norm = ', np.max(r_norms))
+    else:
+        print('sTDDFT_precond Converged after ', ii+1, 'iterations  ', round(sTDDFT_precond_cost, 4), 'seconds')
+        print('initial_cost', round(initial_cost,4), round(initial_cost/sTDDFT_precond_cost * 100,2),'%')
+        print('Pcost', round(Pcost,4), round(Pcost/sTDDFT_precond_cost * 100,2),'%')
+        print('MVcost', round(MVcost,4), round(MVcost/sTDDFT_precond_cost * 100,2),'%')
+        print('GScost', round(GScost,4), round(GScost/sTDDFT_precond_cost * 100,2),'%')
+        print('subcost', round(subcost,4), round(subcost/sTDDFT_precond_cost * 100,2),'%')
+        print('subgencost', round(subgencost,4), round(subgencost/sTDDFT_precond_cost * 100,2),'%')
+        print('symmetrycost', round(symmetrycost,4), round(symmetrycost/sTDDFT_precond_cost * 100,2),'%')
+        print('final subspace', sigma.shape)
+
+    show_memory_info('preconditioner at end')
+    X_full *=  pqnorm
+    Y_full *=  pqnorm
+
+    X = np.zeros((n_occ,n_vir,k))
+    Y = np.zeros((n_occ,n_vir,k))
+
+    X[:,:max_vir,:] = X_full.reshape(n_occ,max_vir,k)
+    Y[:,:max_vir,:] = Y_full.reshape(n_occ,max_vir,k)
+
+    if max_vir < n_vir:
+        P2 = Rx[:,max_vir:,:].reshape(n_occ*(n_vir-max_vir),-1)
+        Q2 = Ry[:,max_vir:,:].reshape(n_occ*(n_vir-max_vir),-1)
+
+        X2, Y2 = TDDFT_A_diag_preconditioner(\
+                        P2, Q2, omega, hdiag = delta_diag_A[:,max_vir:])
+        X[:,max_vir:,:] = X2.reshape(n_occ,n_vir-max_vir,-1)
+        Y[:,max_vir:,:] = Y2.reshape(n_occ,n_vir-max_vir,-1)
+
+    X = X.reshape(A_size,-1)
+    Y = Y.reshape(A_size,-1)
+    print(X.shape, Y.shape)
+    return X, Y
+################################################################################
+
+################################################################################
+# a dictionary for TDDFT initial guess and precodnitioner
+TDDFT_i_key = ['sTDDFT', 'Adiag']
+TDDFT_i_func = [sTDDFT_initial_guess, TDDFT_A_diag_initial_guess]
+TDDFT_i_lib = dict(zip(TDDFT_i_key, TDDFT_i_func))
+
+TDDFT_p_key = ['sTDDFT', 'Adiag']
+TDDFT_p_func = [sTDDFT_preconditioner, TDDFT_A_diag_preconditioner]
+TDDFT_p_lib = dict(zip(TDDFT_p_key, TDDFT_p_func))
+################################################################################
+
+################################################################################
+def TDDFT_eigen_solver(init, prec, k=args.nstates, tol=args.TDDFT_tolerance):
+
+    Davidson_dic = {}
+    Davidson_dic['iteration'] = []
+    iteration_list = Davidson_dic['iteration']
+
+    print('Initial guess:  ', init)
+    print('Preconditioner: ', prec)
+    print('A matrix size = ', A_size,'*', A_size)
+
+    TDDFT_start = time.time()
+    max = args.max
+    m = 0
+
+    if args.TDDFT_extrainitial_3n == True:
+        new_m = min([k + args.TDDFT_extrainitial, 3*k, A_size])
+    else:
+        new_m = min([k + args.TDDFT_extrainitial, 2*k, A_size])
+
+    # new_m = k
+
+    initial_guess = TDDFT_i_lib[init]
+    new_guess_generator = TDDFT_p_lib[prec]
+
+    V_holder = np.zeros((A_size, (max+3)*k))
+    W_holder = np.zeros_like(V_holder)
+
+    U1_holder = np.zeros_like(V_holder)
+    U2_holder = np.zeros_like(V_holder)
+    # set up initial guess VW, transformed vectors U1&U2
+
+    ##############################
+    # setting up initial guess
+    init_start = time.time()
+    V_holder, W_holder, new_m, initial_energies, X_ig, Y_ig = initial_guess(V_holder, W_holder, new_m)
+    init_end = time.time()
+    init_time = init_end - init_start
+
+    initial_energies = initial_energies.tolist()[:k]
+
+    print('new_m =', new_m)
+    print('initial guess done')
+    ##############################
+    Pcost = 0
+    VWGScost = 0
+    for ii in range(max):
+        print('||||____________________Iteration', ii, '____________________||||')
+        show_memory_info('beginning of step '+ str(ii))
+        ###############################################################
+        # creating the subspace
+        V = V_holder[:,:new_m]
+        W = W_holder[:,:new_m]
+        # U1 = AV + BW
+        # U2 = AW + BV
+        U1_holder[:, m:new_m], U2_holder[:, m:new_m] = TDDFT_matrix_vector(V[:, m:new_m], W[:, m:new_m])
+
+        U1 = U1_holder[:,:new_m]
+        U2 = U2_holder[:,:new_m]
+
+        a = np.dot(V.T, U1) + np.dot(W.T, U2)
+        b = np.dot(V.T, U2) + np.dot(W.T, U1)
+
+        sigma = np.dot(V.T, V) - np.dot(W.T, W)
+        pi = np.dot(V.T, W) - np.dot(W.T, V)
+
+        a = symmetrize(a)
+        b = symmetrize(b)
+        sigma = symmetrize(sigma)
+        pi = anti_symmetrize(pi)
+
+        print('sigma.shape', sigma.shape)
+        ###############################################################
+
+        ###############################################################
+#         solve the eigenvalue omega in the subspace
+        omega, x, y = TDDFT_subspace_eigen_solver(a, b, sigma, pi, k)
+        ###############################################################
+        # compute the residual
+        # R_x = U1x + U2y - (Vx + Wy)omega
+        # R_y = U2x + U1y + (Wx + Vy)omega
+        # R_x = np.dot(U1,x) + np.dot(U2,y) - (np.dot(V,x) + np.dot(W,y))*omega
+        # R_y = np.dot(U2,x) + np.dot(U1,y) + (np.dot(W,x) + np.dot(V,y))*omega
+
+        U1x = np.dot(U1,x)
+        U2x = np.dot(U2,x)
+        Vx = np.dot(V,x)
+        Wx = np.dot(W,x)
+
+        U1y = np.dot(U1,y)
+        U2y = np.dot(U2,y)
+        Vy = np.dot(V,y)
+        Wy = np.dot(W,y)
+
+        X_full = Vx + Wy
+        Y_full = Wx + Vy
+
+        R_x = U1x + U2y - X_full*omega
+        R_y = U2x + U1y + Y_full*omega
+
+        residual = np.vstack((R_x, R_y))
+
+        r_norms = np.linalg.norm(residual, axis=0).tolist()
+
+        iteration_list.append({})
+        current_dic = iteration_list[ii]
+        current_dic['residual norms'] = r_norms
+        iteration_list[ii] = current_dic
+
+        print('Maximum residual norm: ', np.max(r_norms))
+        # print('r_norms', r_norms)
+        if np.max(r_norms) < tol or ii == (max -1):
+            break
+        # index for unconverged residuals
+        index = [r_norms.index(i) for i in r_norms if i > tol]
+        index = [i for i,R in enumerate(r_norms) if R > tol]
+        print('unconverged states', index)
+        ###############################################################
+
+        #####################################################################################
+        # preconditioning step
+        P_start = time.time()
+        X_new, Y_new = new_guess_generator(R_x[:,index], R_y[:,index], omega[index])
+        P_end = time.time()
+        Pcost += P_end - P_start
+        #####################################################################################
+
+        ###############################################################
+        # GS and symmetric orthonormalization
+        m = new_m
+        VWGScost_start = time.time()
+        V_holder, W_holder, new_m = VW_Gram_Schmidt_fill_holder(V_holder, W_holder, m, X_new, Y_new)
+        VWGScost_end = time.time()
+        VWGScost += VWGScost_end - VWGScost_start
+        print('m & new_m', m, new_m)
+        if new_m == m:
+            print('All new guesses kicked out during GS orthonormalization')
+            break
+        ###############################################################
+
+
+
+    omega *= 27.211386245988
+
+    difference = np.mean((np.array(initial_energies) - np.array(omega))**2)
+    difference = float(difference)
+
+    overlap = float(np.linalg.norm(np.dot(X_ig.T, X_full)) + np.linalg.norm(np.dot(Y_ig.T, Y_full)))
+
+    TDDFT_end = time.time()
+    TDDFT_cost = TDDFT_end - TDDFT_start
+    Davidson_dic['initial guess'] = init
+    Davidson_dic['initial_energies'] = initial_energies
+    Davidson_dic['semiempirical_difference'] = difference
+    Davidson_dic['overlap'] = overlap
+    Davidson_dic['preconditioner'] = prec
+    Davidson_dic['nstate'] = k
+    Davidson_dic['molecule'] = basename
+    Davidson_dic['method'] = args.method
+    Davidson_dic['functional'] = args.functional
+    Davidson_dic['threshold'] = tol
+    Davidson_dic['SCF time'] = kernel_t
+    Davidson_dic['Initial guess time'] = init_time
+    Davidson_dic['initial guess threshold'] = args.TDDFT_initialTOL
+    Davidson_dic['New guess generating time'] = Pcost
+    Davidson_dic['preconditioner threshold'] = args.TDDFT_precondTOL
+    Davidson_dic['total time'] = TDDFT_cost
+    Davidson_dic['iterations'] = ii + 1
+    Davidson_dic['A matrix size'] = A_size
+    Davidson_dic['final subspace size'] = np.shape(sigma)[0]
+    Davidson_dic['excitation energy(eV)'] = omega.tolist()
+    Davidson_dic['ax'] = a_x
+    Davidson_dic['alpha'] = alpha
+    Davidson_dic['beta'] = beta
+    Davidson_dic['virtual truncation tol'] = args.truncate_virtual
+    Davidson_dic['n_occ'] = n_occ
+    Davidson_dic['n_vir'] = n_vir
+    Davidson_dic['max_vir'] = max_vir
+    if ii == (max -1):
+        print('============================ TDDFT Failed Due to Iteration Limit============================')
+        print('TDDFT failed after ', ii+1, 'iterations  ', round(TDDFT_cost, 4), 'seconds')
+        print('current residual norms', r_norms)
+        print('max_norm = ', np.max(r_norms))
+    else:
+        print('================================== TDDFT Calculation Done ==================================')
+        print('TDDFT Converged after ', ii+1, 'iterations  ', round(TDDFT_cost, 4), 'seconds')
+        print('Initial guess',init)
+        print('preconditioner', prec)
+        print('Final subspace ', sigma.shape)
+        print('preconditioning cost', round(Pcost,4), round(Pcost/TDDFT_cost * 100, 2), "%")
+        print('VWGScost',round(VWGScost,4))
+        # print('current residual norms', r_norms)
+        print('max_norm = ', np.max(r_norms))
+
+    # need normalize
+    show_memory_info('Total TDDFT')
+    return omega, X_full, Y_full, Davidson_dic
+# end of TDDFT module
+################################################################################
+
+################################################################################
+# a dictionary for TDDFT initial guess and precodnitioner
+dynpol_i_key = ['sTDDFT', 'Adiag']
+dynpol_i_func = [sTDDFT_preconditioner, TDDFT_A_diag_preconditioner]
+dynpol_i_lib = dict(zip(dynpol_i_key, dynpol_i_func))
+
+dynpol_p_key = ['sTDDFT', 'Adiag']
+dynpol_p_func = [sTDDFT_preconditioner, TDDFT_A_diag_preconditioner]
+dynpol_p_lib = dict(zip(dynpol_p_key, dynpol_p_func))
+################################################################################
+
+################################################################################
+def gen_P():
+    mo_coeff = mf.mo_coeff
+    mo_occ = mf.mo_occ
+    occidx = mo_occ > 0
+    orbo = mo_coeff[:, occidx]
+    orbv = mo_coeff[:,~occidx]
+    int_r= mol.intor_symmetric('int1e_r')
+    P = lib.einsum("xpq,pi,qa->iax", int_r, orbo, orbv.conj())
+    return P
+################################################################################
+
+################################################################################
+def dynamic_polarizability(init, prec):
+    ''' [ A B ] - [1  0]X  w = -P'''
+    ''' [ B A ]   [0 -1]Y    = -Q'''
+    dp_start = time.time()
+    initial_guess = dynpol_i_lib[init]
+    new_guess_generator = dynpol_p_lib[prec]
+
+    print('Initial guess:  ', init)
+    print('Preconditioner: ', prec)
+    print('A matrix size = ', A_size,'*', A_size)
+
+    Davidson_dic = {}
+    Davidson_dic['iteration'] = []
+    iteration_list = Davidson_dic['iteration']
+
+    k = len(args.dynpol_omega)
+    omega =  np.zeros([3*k])
+    for jj in range(k):
+        # 0,1,2   3,4,5   6,7,8
+        omega[3*jj:3*(jj+1)] = 45.56337117/args.dynpol_omega[jj]
+        # convert nm to Hartree
+
+    P = gen_P()
+    P = P.reshape(-1,3)
+
+    P_origin = np.zeros_like(P)
+    P_origin[:,:] = P[:,:]
+
+    pnorm = np.linalg.norm(P, axis=0, keepdims = True)
+    pqnorm = pnorm * (2**0.5)
+    print('pqnorm', pqnorm)
+    P /= pqnorm
+
+    P = np.tile(P,k)
+    Q = P
+    #P, Q, omega
+
+    max = args.max
+    tol = args.dynpol_tolerance
+
+    m = 0
+    V_holder = np.zeros((A_size, (max+1)*k*3))
+    W_holder = np.zeros_like(V_holder)
+
+    U1_holder = np.zeros_like(V_holder)
+    U2_holder = np.zeros_like(V_holder)
+
+    ##############################
+    # setting up initial guess
+    init_start = time.time()
+    X_ig, Y_ig = initial_guess(-P, -Q, omega)
+
+    alpha_omega_ig = []
+    X_p_Y = X_ig + Y_ig
+    X_p_Y *= np.tile(pqnorm,k)
+    for jj in range(k):
+        X_p_Y_tmp = X_p_Y[:,3*jj:3*(jj+1)]
+        # *-1 from the definition of dipole moment. *2 for double occupancy
+        alpha_omega_ig.append(np.dot(P_origin.T, X_p_Y_tmp)*-2)
+    print('initial guess of tensor alpha')
+    for i in range(k):
+        print(args.dynpol_omega[i],'nm')
+        print(alpha_omega_ig[i])
+
+    V_holder, W_holder, new_m = VW_Gram_Schmidt_fill_holder(V_holder, W_holder, 0, X_ig, Y_ig)
+    init_end = time.time()
+#     print('initial guess done')
+    initial_cost = init_end - init_start
+    ##############################
+    subcost = 0
+    Pcost = 0
+    MVcost = 0
+    GScost = 0
+    subgencost = 0
+    for ii in range(max):
+        print('||||____________________Iteration', ii, '_________')
+        ###############################################################
+        # creating the subspace
+        V = V_holder[:,:new_m]
+        W = W_holder[:,:new_m]
+        # U1 = AV + BW
+        # U2 = AW + BV
+
+        MV_start = time.time()
+        U1_holder[:, m:new_m], U2_holder[:, m:new_m] = TDDFT_matrix_vector(V[:, m:new_m], W[:, m:new_m])
+        MV_end = time.time()
+        MVcost += MV_end - MV_start
+
+        U1 = U1_holder[:,:new_m]
+        U2 = U2_holder[:,:new_m]
+
+        subgenstart = time.time()
+        a = np.dot(V.T, U1) + np.dot(W.T, U2)
+        b = np.dot(V.T, U2) + np.dot(W.T, U1)
+
+        sigma = np.dot(V.T, V) - np.dot(W.T, W)
+        pi = np.dot(V.T, W) - np.dot(W.T, V)
+
+        a = symmetrize(a)
+        b = symmetrize(b)
+        sigma = symmetrize(sigma)
+        pi = anti_symmetrize(pi)
+        # p = VP + WQ
+        # q = WP + VQ
+        p = np.dot(V.T, P) + np.dot(W.T, Q)
+        q = np.dot(W.T, P) + np.dot(V.T, Q)
+        subgenend = time.time()
+        subgencost += subgenend - subgenstart
+        print('sigma.shape', sigma.shape)
+        ###############################################################
+
+        ###############################################################
+#         solve the x & y in the subspace
+        subcost_start = time.time()
+        x, y = sTDDFT_preconditioner_subspace_eigen_solver(a, b, sigma, pi, -p, -q, omega)
+        subcost_end = time.time()
+        subcost += subcost_end - subcost_start
+        ###############################################################
+
+        ###############################################################
+        # compute the residual
+#         R_x = U1x + U2y - (Vx + Wy)omega - P
+#         R_y = U2x + U1y + (Wx + Vy)omega - Q
+#         R_x = np.dot(U1,x) + np.dot(U2,y) - (np.dot(V,x) + np.dot(W,y))*omega - P
+#         R_y = np.dot(U2,x) + np.dot(U1,y) + (np.dot(W,x) + np.dot(V,y))*omega - Q
+
+        U1x = np.dot(U1,x)
+        U2x = np.dot(U2,x)
+        Vx = np.dot(V,x)
+        Wx = np.dot(W,x)
+
+        U1y = np.dot(U1,y)
+        U2y = np.dot(U2,y)
+        Vy = np.dot(V,y)
+        Wy = np.dot(W,y)
+
+        X_full = Vx + Wy
+        Y_full = Wx + Vy
+
+        R_x = U1x + U2y - X_full*omega + P
+        R_y = U2x + U1y + Y_full*omega + Q
+
+        residual = np.vstack((R_x,R_y))
+#         print('residual.shape', residual.shape)
+        r_norms = np.linalg.norm(residual, axis=0).tolist()
+        print('r_norms', r_norms)
+        print('maximum residual norm: ', np.max(r_norms))
+
+        iteration_list.append({})
+        current_dic = iteration_list[ii]
+        current_dic['residual norms'] = r_norms
+        iteration_list[ii] = current_dic
+
+        if np.max(r_norms) < tol or ii == (max -1):
+            break
+        # index for unconverged residuals
+        index = [r_norms.index(i) for i in r_norms if i > tol]
+#         print('index', index)
+        ###############################################################
+
+        #####################################################################################
+        # preconditioning step
+        Pstart = time.time()
+        X_new, Y_new = new_guess_generator(R_x[:,index], R_y[:,index], omega[index])
+        Pend = time.time()
+        Pcost += Pend - Pstart
+        #####################################################################################
+
+        ###############################################################
+        # GS and symmetric orthonormalization
+        m = new_m
+        GS_start = time.time()
+        V_holder, W_holder, new_m = VW_Gram_Schmidt_fill_holder(V_holder, W_holder, m, X_new, Y_new)
+        GS_end = time.time()
+        GScost += GS_end - GS_start
+#         print('m & new_m', m, new_m)
+        if new_m == m:
+            print('All new guesses kicked out during GS orthonormalization')
+            break
+        ###############################################################
+
+    dp_end = time.time()
+    dp_cost = dp_end - dp_start
+
+    if ii == (max -1):
+        print('============================ Dynamic polarizability Failed Due to Iteration Limit============================')
+        print('dynamic polarizability failed after ', ii+1, 'iterations  ', round(dp_cost, 4), 'seconds')
+        print('current residual norms', r_norms)
+        print('max_norm = ', np.max(r_norms))
+    else:
+        print('Dynamic polarizability Converged after ', ii+1, 'iterations  ', round(dp_cost, 4), 'seconds')
+        print('initial_cost', round(initial_cost,4), round(initial_cost/dp_cost * 100,2),'%')
+        print('Pcost', round(Pcost,4), round(Pcost/dp_cost * 100,2),'%')
+        print('MVcost', round(MVcost,4), round(MVcost/dp_cost * 100,2),'%')
+        print('GScost', round(GScost,4), round(GScost/dp_cost * 100,2),'%')
+        print('subcost', round(subcost,4), round(subcost/dp_cost * 100,2),'%')
+        print('subgencost', round(subgencost,4), round(subgencost/dp_cost * 100,2),'%')
+
+    print('Wavelength we look at', args.dynpol_omega)
+    alpha_omega = []
+
+    overlap = float(np.linalg.norm(np.dot(X_ig.T, X_full)) + np.linalg.norm(np.dot(Y_ig.T, Y_full)))
+
+    X_p_Y = X_full + Y_full
+
+    X_p_Y *= np.tile(pqnorm,k)
+
+    for jj in range(k):
+        X_p_Y_tmp = X_p_Y[:,3*jj:3*(jj+1)]
+        # *-1 from the definition of dipole moment. *2 for double occupancy
+        alpha_omega.append(np.dot(P_origin.T, X_p_Y_tmp)*-2)
+
+     # np.dot(-P.T, X_full) + np.dot(-P.T, Y_full)
+
+    difference = 0
+    for i in range(k):
+        difference += np.mean((alpha_omega_ig[i] - alpha_omega[i])**2)
+
+    difference = float(difference)
+
+
+    Davidson_dic['initial guess'] = init
+    Davidson_dic['preconditioner'] = prec
+    Davidson_dic['molecule'] = basename
+    Davidson_dic['method'] = args.method
+    Davidson_dic['functional'] = args.functional
+    Davidson_dic['threshold'] = args.dynpol_tolerance
+    Davidson_dic['SCF time'] = kernel_t
+    Davidson_dic['Initial guess time'] = initial_cost
+    Davidson_dic['initial guess threshold'] = args.dynpol_initprecTOL
+    Davidson_dic['New guess generating time'] = Pcost
+    Davidson_dic['preconditioner threshold'] = args.dynpol_initprecTOL
+    Davidson_dic['total time'] = dp_cost
+    Davidson_dic['iterations'] = ii + 1
+    Davidson_dic['A matrix size'] = A_size
+    Davidson_dic['final subspace size'] = np.shape(sigma)[0]
+    Davidson_dic['Dynamic polarizability wavelength'] = args.dynpol_omega
+    Davidson_dic['Dynamic polarizability tensor alpha'] = [i.tolist() for i in alpha_omega]
+    Davidson_dic['Dynamic polarizability tensor alpha initial guess '] = [i.tolist() for i in alpha_omega_ig]
+    Davidson_dic['overlap'] = overlap
+    Davidson_dic['semiempirical_difference'] = difference
+    Davidson_dic['ax'] = a_x
+    Davidson_dic['alpha'] = alpha
+    Davidson_dic['beta'] = beta
+    Davidson_dic['virtual truncation tol'] = args.truncate_virtual
+    Davidson_dic['n_occ'] = n_occ
+    Davidson_dic['n_vir'] = n_vir
+    Davidson_dic['max_vir'] = max_vir
+    show_memory_info('Total Dynamic polarizability')
+
+    return alpha_omega, Davidson_dic
+################################################################################
+
+###############################################################################
+def stapol_A_diag_initprec(P):
+    d = hdiag.reshape(-1,1)
+    return -P/d
+###############################################################################
+
+###############################################################################
+def stapol_sTDDFT_initprec(P):
+    '''(A* + B*)X = -P'''
+    '''residual = (A* + B*)X + P'''
+    '''X_ig = -P/d'''
+    '''X_new = (residual - P)/D = Ux/D'''
+    ssp_start = time.time()
+    max = 30
+    tol = args.stapol_initprecTOL
+    m = 0
+    npvec = P.shape[1]
+
+    P_origin = np.zeros_like(P)
+    P_origin[:,:] = P[:,:]
+    pnorm = np.linalg.norm(P_origin, axis=0, keepdims = True)
+    # print('pnorm', pnorm)
+    P /= pnorm
+
+    # print('vectors to be preconditioned', npvec)
+    V_holder = np.zeros((A_size, (max+1)*npvec))
+    U_holder = np.zeros_like(V_holder)
+
+    ##############################
+    # setting up initial guess
+    init_start = time.time()
+
+    X_ig = stapol_A_diag_initprec(P)
+
+    V_holder, new_m = Gram_Schmidt_fill_holder(V_holder, m, X_ig)
+    # V_holder[:,0] = X_new[:,0]/np.linalg.norm(X_new[:,0])
+    # if npvec >= 2:
+    #     V_holder, new_m = Gram_Schmidt_fill_holder(V_holder, 1, X_new[:, 1:])
+    # else:
+    #     new_m = 1
+    # print('new_m =', new_m)
+    init_end = time.time()
+#     print('initial guess done')
+    initial_cost = init_end - init_start
+    ##############################
+    subcost = 0
+    Pcost = 0
+    MVcost = 0
+    GScost = 0
+    subgencost = 0
+    for ii in range(max):
+        # creating the subspace
+        MV_start = time.time()
+        U_holder[:, m:new_m] = sTDDFT_stapol_mv(V_holder[:,m:new_m])
+        MV_end = time.time()
+        MVcost += MV_end - MV_start
+
+        V = V_holder[:,:new_m]
+        # U = AX + BX = (A+B)X
+#         print(check_orthonormal(V))
+        U = U_holder[:,:new_m]
+
+        subgenstart = time.time()
+        p = np.dot(V.T, P)
+        a_p_b = np.dot(V.T,U)
+        a_p_b = symmetrize(a_p_b)
+
+        subgenend = time.time()
+        subgencost += subgenend - subgenstart
+        ###############################################################
+
+        ###############################################################
+#         solve the x in the subspace
+        subcost_start = time.time()
+        x = np.linalg.solve(a_p_b, -p)
+        subcost_end = time.time()
+        subcost += subcost_end - subcost_start
+        ###############################################################
+
+        ###############################################################
+        # compute the residual
+#         R = Ux + P
+        Ux = np.dot(U,x)
+        residual = Ux + P
+
+        r_norms = np.linalg.norm(residual, axis=0).tolist()
+        # index for unconverged residuals
+        index = [r_norms.index(i) for i in r_norms if i > tol]
+        ###############################################################
+        if np.max(r_norms) < tol or ii == (max -1):
+            break
+
+        ########################################################################
+        # preconditioning step
+        Pstart = time.time()
+
+        X_new = stapol_A_diag_initprec(-residual[:,index])
+
+        Pend = time.time()
+        Pcost += Pend - Pstart
+        ########################################################################
+
+        ###############################################################
+        # GS and symmetric orthonormalization
+        m = new_m
+        GS_start = time.time()
+        V_holder, new_m = Gram_Schmidt_fill_holder(V_holder, m, X_new)
+        GS_end = time.time()
+        GScost += GS_end - GS_start
+#         print('m & new_m', m, new_m)
+        if new_m == m:
+            print('All new guesses kicked out during GS orthonormalization')
+            break
+        ###############################################################
+    X_full = np.dot(V,x)
+    # alpha = np.dot(X_full.T, P)*-4
+
+    ssp_end = time.time()
+    ssp_cost = ssp_end - ssp_start
+
+    if ii == (max -1):
+        print('============================ sTDDFT Static polarizability Failed Due to Iteration Limit============================')
+        print('sTDDFT Static polarizability failed after ', ii+1, 'iterations  ', round(ssp_cost, 4), 'seconds')
+        print('current residual norms', r_norms)
+        print('max_norm = ', np.max(r_norms))
+    else:
+        print('sTDDFT Static polarizability Converged after ', ii+1, 'iterations  ', round(ssp_cost, 4), 'seconds')
+        # print('initial_cost', round(initial_cost,4), round(initial_cost/ssp_cost * 100,2),'%')
+        # print('Pcost', round(Pcost,4), round(Pcost/ssp_cost * 100,2),'%')
+        print('MVcost', round(MVcost,4), round(MVcost/ssp_cost * 100,2),'%')
+        # print('GScost', round(GScost,4), round(GScost/ssp_cost * 100,2),'%')
+        # print('subcost', round(subcost,4), round(subcost/ssp_cost * 100,2),'%')
+        # print('subgencost', round(subgencost,4), round(subgencost/ssp_cost * 100,2),'%')
+
+    X_full *= pnorm
+    return X_full
+################################################################################
+
+################################################################################
+# a dictionary for static_polarizability initial guess and precodnitioner
+stapol_i_key = ['sTDDFT', 'Adiag']
+stapol_i_func = [stapol_sTDDFT_initprec, stapol_A_diag_initprec]
+stapol_i_lib = dict(zip(stapol_i_key, stapol_i_func))
+
+stapol_p_key = ['sTDDFT', 'Adiag']
+stapol_p_func = [stapol_sTDDFT_initprec, stapol_A_diag_initprec]
+stapol_p_lib = dict(zip(stapol_p_key, stapol_p_func))
+################################################################################
+
+################################################################################
+# Static polarizability
+def static_polarizability(init, prec):
+    '''(A+B)X = -P'''
+    '''residual = (A+B)X + P'''
+    '''X_new = (residual - P)/D'''
+    print('initial guess', init)
+    print('preconditioner', prec)
+    sp_start = time.time()
+
+    P = gen_P()
+    P = P.reshape(-1,3)
+
+    P_origin = np.zeros_like(P)
+    P_origin[:,:] = P[:,:]
+
+    pnorm = np.linalg.norm(P, axis=0, keepdims = True)
+    # pnorm is constant
+    print('pnorm', pnorm)
+
+    P /= pnorm
+
+    Davidson_dic = {}
+    Davidson_dic['iteration'] = []
+    iteration_list = Davidson_dic['iteration']
+
+    initial_guess = stapol_i_lib[init]
+    new_guess_generator = stapol_p_lib[prec]
+
+    max = args.max
+    tol = args.stapol_tolerance
+    m = 0
+
+    V_holder = np.zeros((A_size, (max+1)*3))
+    U_holder = np.zeros_like(V_holder)
+
+    ##############################
+    # setting up initial guess
+    init_start = time.time()
+
+#     X_new = -P/d3
+    X_ig = initial_guess(P)
+
+    alpha_init = np.dot((X_ig*pnorm).T, P_origin)*-4
+    print('alpha tensor of initial guess:')
+    print(alpha_init)
+
+    V_holder, new_m = Gram_Schmidt_fill_holder(V_holder, 0, X_ig)
+    print('new_m =', new_m)
+    init_end = time.time()
+#     print('initial guess done')
+    initial_cost = init_end - init_start
+    ##############################
+    subcost = 0
+    Pcost = 0
+    MVcost = 0
+    GScost = 0
+    subgencost = 0
+    for ii in range(max):
+        print('||||____________________Iteration', ii, '_________')
+        ########################################################################
+        # creating the subspace
+
+        MV_start = time.time()
+        U_holder[:, m:new_m] = static_polarizability_matrix_vector(V_holder[:,m:new_m])
+        MV_end = time.time()
+        MVcost += MV_end - MV_start
+
+        V = V_holder[:,:new_m]
+        # print('check_orthonormal(V)',check_orthonormal(V))
+        # U = AX + BX = (A+B)X
+#         print(check_orthonormal(V))
+        U = U_holder[:,:new_m]
+
+        subgenstart = time.time()
+        p = np.dot(V.T, P)
+        a_p_b = np.dot(V.T,U)
+        a_p_b = symmetrize(a_p_b)
+        subgenend = time.time()
+        subgencost += subgenend - subgenstart
+
+        # print('a_p_b.shape', a_p_b.shape)
+        ########################################################################
+
+        ########################################################################
+#         solve the x in the subspace
+        subcost_start = time.time()
+        x = np.linalg.solve(a_p_b, -p)
+        # print('x.shape', x.shape)
+        subcost_end = time.time()
+        subcost += subcost_end - subcost_start
+        ########################################################################
+
+        ########################################################################
+        # compute the residual
+#         R = Ux + P
+        Ux = np.dot(U,x)
+        residual = Ux + P
+
+        r_norms = np.linalg.norm(residual, axis=0).tolist()
+        print('r_norms', r_norms)
+
+        iteration_list.append({})
+        current_dic = iteration_list[ii]
+        current_dic['residual norms'] = r_norms
+        iteration_list[ii] = current_dic
+
+        # index for unconverged residuals
+        index = [r_norms.index(i) for i in r_norms if i > tol]
+#         print('index', index)
+        ########################################################################
+        if np.max(r_norms) < tol or ii == (max -1):
+            break
+
+        ########################################################################
+        # preconditioning step
+        Pstart = time.time()
+
+        X_new = new_guess_generator(-residual[:,index])
+        # X_new = X_new/np.linalg.norm(X_new, axis=0)
+        Pend = time.time()
+        Pcost += Pend - Pstart
+        ########################################################################
+
+        ########################################################################
+        # GS and symmetric orthonormalization
+        m = new_m
+        GS_start = time.time()
+        V_holder, new_m = Gram_Schmidt_fill_holder(V_holder, m, X_new)
+        GS_end = time.time()
+        GScost += GS_end - GS_start
+#         print('m & new_m', m, new_m)
+        if new_m == m:
+            print('All new guesses kicked out during GS orthonormalization')
+            break
+        ###############################################################
+    print('V.shape', V.shape)
+    X_full = np.dot(V,x)
+
+    overlap = float(np.linalg.norm(np.dot(X_ig.T, X_full)))
+
+    X_full *= pnorm
+
+    tensor_alpha = np.dot(X_full.T, P_origin)*-4
+    sp_end = time.time()
+    sp_cost = sp_end - sp_start
+
+
+
+    if ii == (max -1):
+        print('============================ Static polarizability Failed Due to Iteration Limit============================')
+        print('Static polarizability failed after ', ii+1, 'iterations  ', round(sp_cost, 4), 'seconds')
+        print('current residual norms', r_norms)
+        print('max_norm = ', np.max(r_norms))
+    else:
+        print('Static polarizability Converged after ', ii+1, 'iterations  ', round(sp_cost, 4), 'seconds')
+        print('initial_cost', round(initial_cost,4), round(initial_cost/sp_cost * 100,2),'%')
+        print('Pcost', round(Pcost,4), round(Pcost/sp_cost * 100,2),'%')
+        print('MVcost', round(MVcost,4), round(MVcost/sp_cost * 100,2),'%')
+        print('GScost', round(GScost,4), round(GScost/sp_cost * 100,2),'%')
+        print('subcost', round(subcost,4), round(subcost/sp_cost * 100,2),'%')
+        print('subgencost', round(subgencost,4), round(subgencost/sp_cost * 100,2),'%')
+
+    difference = np.mean((alpha_init - tensor_alpha)**2)
+    difference = float(difference)
+
+    sp_end = time.time()
+    spcost = sp_end - sp_start
+    Davidson_dic['initial guess'] = init
+    Davidson_dic['preconditioner'] = prec
+    Davidson_dic['molecule'] = basename
+    Davidson_dic['method'] = args.method
+    Davidson_dic['functional'] = args.functional
+    Davidson_dic['threshold'] = args.stapol_tolerance
+    Davidson_dic['SCF time'] = kernel_t
+    Davidson_dic['Initial guess time'] = initial_cost
+    Davidson_dic['initial guess threshold'] = args.stapol_initprecTOL
+    Davidson_dic['New guess generating time'] = Pcost
+    Davidson_dic['preconditioner threshold'] = args.stapol_initprecTOL
+    Davidson_dic['total time'] = sp_cost
+    Davidson_dic['iterations'] = ii+1
+    Davidson_dic['A matrix size'] = A_size
+    Davidson_dic['final subspace size'] = np.shape(a_p_b)[0]
+    Davidson_dic['semiempirical_difference'] = difference
+    Davidson_dic['overlap'] = overlap
+    Davidson_dic['ax'] = a_x
+    Davidson_dic['alpha'] = alpha
+    Davidson_dic['beta'] = beta
+    Davidson_dic['virtual truncation tol'] = args.truncate_virtual
+    Davidson_dic['n_occ'] = n_occ
+    Davidson_dic['n_vir'] = n_vir
+    Davidson_dic['max_vir'] = max_vir
+    return tensor_alpha, Davidson_dic
+################################################################################
+
+TDA_combo = [            # option
+['sTDA','sTDA'],     # 0
+['Adiag','Adiag'],   # 1
+['Adiag','sTDA'],    # 2
+['sTDA','Adiag'],    # 3
+['sTDA','Jacobi'],   # 4
+['Adiag','Jacobi'],  # 5
+['Adiag','new_ES'],  # 6
+['sTDA','new_ES']]   # 7
+
+TDDFT_combo = [         # option
+['sTDDFT','sTDDFT'],     # 0
+['Adiag','Adiag'],       # 1
+['Adiag','sTDDFT'],      # 2
+['sTDDFT','Adiag']]      # 3
+
+dynpol_combo = [         # option
+['sTDDFT','sTDDFT'],                     # 0
+['Adiag','Adiag'],                       # 1
+['Adiag','sTDDFT'],                      # 2
+['sTDDFT','Adiag']]                      # 3
+
+stapol_combo = [         # option
+['sTDDFT','sTDDFT'],                     # 0
+['Adiag','Adiag'],                       # 1
+['Adiag','sTDDFT'],                      # 2
+['sTDDFT','Adiag']]                      # 3
+
+if args.TDA == True:
+    for option in args.TDA_options:
+        init, prec = TDA_combo[option]
+        print('-------------------------------------------------------------------')
+        print('|---------------   In-house Developed Davidson Starts   -----------|')
+        print('Residual conv =', args.TDA_tolerance)
+        print('Number of excited states =', args.nstates)
+
+        total_start = time.time()
+        Excitation_energies, eigenkets, Davidson_dic = Davidson(args.nstates, args.TDA_tolerance, init,prec)
+        total_end = time.time()
+        total_time = total_end - total_start
+
+        print('In-house Davidson time:', round(total_time, 4), 'seconds')
+
+        print('Excited State energies (eV) =')
+        print(Excitation_energies)
+
+        curpath = os.getcwd()
+        yamlpath = os.path.join(curpath, basename + '_TDA_i_' + init + '_p_'+ prec + '.yaml')
+
+        with open(yamlpath, "w", encoding="utf-8") as f:
+            yaml.dump(Davidson_dic, f)
+
+        print('|---------------   In-house Developed Davidson Done   -----------|')
+
+if args.TDDFT == True:
+    for option in args.TDDFT_options:
+        init, prec = TDDFT_combo[option]
+        print('----------------------------------------------------------------------------')
+        print('|---------------   In-house Developed TDDFT Eigensolver Starts   -----------|')
+        print('Residual conv =', args.TDDFT_tolerance)
+        print('Number of excited states =', args.nstates)
+
+        total_start = time.time()
+        Excitation_energies, X, Y, Davidson_dic = TDDFT_eigen_solver(init,prec)
+        total_end = time.time()
+        total_time = total_end - total_start
+
+        print('In-house TDDFT Eigensolver time:', round(total_time, 4), 'seconds')
+
+        print('Excited State energies (eV) =')
+        print(Excitation_energies)
+
+        curpath = os.getcwd()
+        yamlpath = os.path.join(curpath, basename + '_TDDFT_i_' + init + '_p_'+ prec + '.yaml')
+
+        with open(yamlpath, "w", encoding="utf-8") as f:
+            yaml.dump(Davidson_dic, f)
+
+        print('|---------------   In-house Developed TDDFT Eigensolver Done   -----------|')
+
+if args.dynpol == True:
+    args.TDDFT_precondTOL = args.dynpol_initprecTOL
+    print('args.TDDFT_precondTOL', args.TDDFT_precondTOL)
+    for option in args.dynpol_options:
+        init,prec = dynpol_combo[option]
+        print('---------------------------------------------------------------------------------')
+        print('|---------------   In-house Developed Dynamic Polarizability Starts   -----------|')
+        print('Residual conv =', args.dynpol_tolerance)
+        print('Perturbation wavelength omega (nm) =', args.dynpol_omega)
+
+        total_start = time.time()
+        alpha_omega, Davidson_dic = dynamic_polarizability(init,prec)
+        total_end = time.time()
+        total_time = total_end - total_start
+
+        print('In-house Dynamic Polarizability time:', round(total_time, 4), 'seconds')
+        print('Dynamic polarizability tensor alpha')
+        for i in range(len(args.dynpol_omega)):
+            print(args.dynpol_omega[i],'nm')
+            print(alpha_omega[i])
+
+        curpath = os.getcwd()
+        yamlpath = os.path.join(curpath, basename + '_Dynamic_Polarizability_i_' + init + '_p_'+ prec + '.yaml')
+
+        with open(yamlpath, "w", encoding="utf-8") as f:
+            yaml.dump(Davidson_dic, f)
+
+        print('|---------------   In-house Developed Dynamic Polarizability Done   -----------|')
+
+if args.stapol == True:
+    for option in args.stapol_options:
+        init,prec = stapol_combo[option]
+        print('--------------------------------------------------------------------------------')
+        print('|---------------   In-house Developed Static Polarizability Starts   -----------|')
+        print('Residual conv =', args.stapol_tolerance)
+
+        total_start = time.time()
+        tensor_alpha, Davidson_dic = static_polarizability(init,prec)
+        total_end = time.time()
+        total_time = total_end - total_start
+
+        print('In-house Static Polarizability time:', round(total_time, 4), 'seconds')
+        print('Static polarizability tensor alpha')
+        print(tensor_alpha)
+
+        curpath = os.getcwd()
+        yamlpath = os.path.join(curpath, basename + '_Static_Polarizability_i_' + init + '_p_'+ prec + '.yaml')
+
+        with open(yamlpath, "w", encoding="utf-8") as f:
+            yaml.dump(Davidson_dic, f)
+
+        print('|---------------   In-house Developed Static Polarizability Done   -----------|')
+
+
+if args.sTDA == True:
+    print('--------------------------------------------------------------------------------')
+    print('|---------------------------   In-house Developed sTDA   --------------------|')
+    print('Convergence =', args.TDA_initialTOL)
+
+    total_start = time.time()
+    X = Davidson0(k=args.nstates)
+    total_end = time.time()
+    total_time = total_end - total_start
+
+    print('In-house sTDA time:', round(total_time, 4), 'seconds')
+    print('|---------------------------   In-house Developed sTDA done  ----------------|')
+
+if args.sTDDFT == True:
+    print('--------------------------------------------------------------------------------')
+    print('|---------------------------   In-house Developed sTDDFT   --------------------|')
+    print('Convergence =', args.TDDFT_initialTOL)
+
+    total_start = time.time()
+    energies, X, Y = sTDDFT_eigen_solver(k=args.nstates)
+    total_end = time.time()
+    total_time = total_end - total_start
+
+    print('In-house sTDDFT time:', round(total_time, 4), 'seconds')
+
+    print('|---------------------------   In-house Developed sTDDFT done  ----------------|')
+
+
+if args.Truncate_test == True:
+    print('--------------------------------------------------------------------------------')
+    print('|---------------------------   Test the Truncation efficiency  ----------------|')
+
+    n_state = 40
+    X = np.random.rand(A_size,n_state)
+    Y = np.random.rand(A_size,n_state)
+    print('n_vir = ', n_vir)
+    print('A_size =', A_size)
+    print('n_state =', n_state)
+    print("virtual tuning: -------------------------------------------- ")
+    print("{:<8} {:<8} {:<8} {:<8}".format(\
+            'eV', 'max_vir', 'sTDA_t', 'sTDDFT_t'))
+    for vir_trunc in [40, 50, 60, 70, 10000000]:
+        del max_vir, sTDA_mv, sTDDFT_mv
+        max_vir = gen_maxvir(tol_eV = vir_trunc)
+        q_ij, q_ab, q_ia , GK_q_jb, GJ_q_ab = gen_QJK(max_vir=max_vir)
+        # print('q_ab', q_ab.shape, 'GK_q_jb', GK_q_jb.shape)
+        iajb_fly, ijab_fly, ibja_fly, delta_fly = gen_iajb_ijab_ibja_delta_fly(\
+                                        max_vir=max_vir, \
+                                        q_ij = q_ij, \
+                                        q_ab = q_ab, \
+                                        q_ia = q_ia , \
+                                        GK_q_jb = GK_q_jb, \
+                                        GJ_q_ab = GJ_q_ab)
+
+
+        sTDA_mv, sTDDFT_mv, sTDDFT_stapol_mv = gen_sTDA_sTDDFT_stapol_fly(\
+                                        max_vir=max_vir, \
+                                        iajb_fly = iajb_fly, \
+                                        ijab_fly = ijab_fly, \
+                                        ibja_fly = ibja_fly, \
+                                        delta_fly = delta_fly)
+
+
+        sTDA_start = time.time()
+        sTDA_X = sTDA_mv(X)
+        sTDA_end = time.time()
+        sTDA_mv_time = sTDA_end - sTDA_start
+
+        sTDDFT_start = time.time()
+        sTDDFT_X, sTDDFT_Y = sTDDFT_mv(X, Y)
+        sTDDFT_end = time.time()
+        sTDDFT_mv_time = sTDDFT_end - sTDDFT_start
+
+        print("{:<8} {:<8} {:<8.4f} {:<8.4f}".format(\
+                vir_trunc, max_vir, sTDA_mv_time, sTDDFT_mv_time))
+
+    print('|-------------------------------------   Test done  --------------------------|')
+
+if args.pytd == True:
+    print('-----------------------------------------------------------------')
+    print('|----------------------    PySCF TTDDFT    ----------------------|')
+    TD.nstates = args.nstates
+    TD.conv_tol = 1e-10
+    start = time.time()
+    TD.kernel()
+    end = time.time()
+    pyscf_time = end-start
+    print('Built-in TDDFT time:', round(pyscf_time, 4), 'seconds')
+    print('|---------------------------------------------------------------|')
+
+if args.verbose > 3:
+    for key in vars(args):
+        print(key,'=', vars(args)[key])
+#INFO: ******************** input file end ********************
+
+
+System: uname_result(system='Linux', node='compt305', release='3.10.0-1127.el7.x86_64', version='#1 SMP Tue Feb 18 16:39:12 EST 2020', machine='x86_64', processor='x86_64')  Threads 16
+Python 3.7.0 (default, Aug 23 2018, 14:24:33) 
+[GCC 6.3.0]
+numpy 1.18.1  scipy 1.4.1
+Date: Wed Jul  7 16:00:48 2021
+PySCF version 1.7.4
+PySCF path  /home/zzz6/.local/lib/python3.7/site-packages/pyscf
+
+[CONFIG] conf_file None
+[INPUT] verbose = 5
+[INPUT] max_memory = 50000 
+[INPUT] num. atoms = 37
+[INPUT] num. electrons = 182
+[INPUT] charge = 0
+[INPUT] spin (= nelec alpha-beta = 2S) = 0
+[INPUT] symmetry False subgroup None
+[INPUT] Mole.unit = angstrom
+[INPUT]  1 C      5.539472397252  -2.559190489899  -0.063472757804 AA   10.468085705394  -4.836169126501  -0.119946128621 Bohr
+[INPUT]  2 C      5.976270596530  -1.270921113302  -0.293638598156 AA   11.293514673732  -2.401692830068  -0.554896530116 Bohr
+[INPUT]  3 C      4.909597399923  -0.329157071246  -0.345690617648 AA    9.277794467732  -0.622016716619  -0.653260591187 Bohr
+[INPUT]  4 C      3.657710160230  -0.904747597797  -0.154411186286 AA    6.912070445874  -1.709725171695  -0.291794852649 Bohr
+[INPUT]  5 S      3.815985695423  -2.633019445726   0.099662551795 AA    7.211167859608  -4.975685633077   0.188334927769 Bohr
+[INPUT]  6 H      6.129426453180  -3.472989704849   0.022250138537 AA   11.582937297174  -6.562999375599   0.042046668068 Bohr
+[INPUT]  7 H      7.029404741956  -1.009392347436  -0.424717899723 AA   13.283649781016  -1.907475088885  -0.802600510677 Bohr
+[INPUT]  8 H      5.043352393929   0.740800082696  -0.528187350471 AA    9.530554774196   1.399909269351  -0.998129434850 Bohr
+[INPUT]  9 C      2.355740746644  -0.272688711729  -0.141521446324 AA    4.451704831636  -0.515306982429  -0.267436774304 Bohr
+[INPUT] 10 C      1.098444276007  -0.850925936670  -0.124866336462 AA    2.075758844749  -1.608016972596  -0.235963178092 Bohr
+[INPUT] 11 S      2.225256181596   1.476582504237  -0.146355266717 AA    4.205124740212   2.790336533332  -0.276571370983 Bohr
+[INPUT] 12 C      0.011684609922   0.083499821427  -0.143392766621 AA    0.022080712625   0.157791793947  -0.270973057158 Bohr
+[INPUT] 13 H      0.957677522042  -1.934718271754  -0.142984546408 AA    1.809748232311  -3.656087661807  -0.270201632757 Bohr
+[INPUT] 14 C      0.473265173107   1.414818907824  -0.169210142058 AA    0.894341561468   2.673620251643  -0.319760825988 Bohr
+[INPUT] 15 C     -0.241667955170   2.673826287463  -0.192020573273 AA   -0.456686248355   5.052799387968  -0.362866293769 Bohr
+[INPUT] 16 C      0.198562130907   3.889967159574  -0.711630141506 AA    0.375228046124   7.350972565147  -1.344786069431 Bohr
+[INPUT] 17 S     -1.815554123758   2.884929238130   0.566436254835 AA   -3.430900058227   5.451726148816   1.070409388662 Bohr
+[INPUT] 18 C     -0.720647863796   4.957919669503  -0.517390201315 AA   -1.361827094828   9.369110322955  -0.977725780018 Bohr
+[INPUT] 19 H      1.153645545869   3.987454146755  -1.235075542025 AA    2.180074126518   7.535196271628  -2.333954517576 Bohr
+[INPUT] 20 C     -1.861430597315   4.565087604373   0.152635028141 AA   -3.517594028811   8.626765306912   0.288438400202 Bohr
+[INPUT] 21 H     -0.553176736082   5.979327947559  -0.868797524123 AA   -1.045352529677  11.299292229845  -1.641789378293 Bohr
+[INPUT] 22 H     -2.733185652861   5.164121576755   0.420903026749 AA   -5.164972331497   9.758775454025   0.795391445557 Bohr
+[INPUT] 23 C     -1.395102614108  -0.279361415062  -0.189985357437 AA   -2.636361856329  -0.527916564237  -0.359020293233 Bohr
+[INPUT] 24 C     -1.904665420259  -1.521221435802   0.034155995175 AA   -3.599296003220  -2.874691888483   0.064545476393 Bohr
+[INPUT] 25 H     -2.085763365568   0.535307927599  -0.434666165545 AA   -3.941521521575   1.011585375470  -0.821400008494 Bohr
+[INPUT] 26 H     -1.217741552684  -2.334132765502   0.303231175629 AA   -2.301198025076  -4.410871665172   0.573023874369 Bohr
+[INPUT] 27 C     -3.315776403614  -1.903170285593  -0.030741025625 AA   -6.265909293127  -3.596470608181  -0.058092119219 Bohr
+[INPUT] 28 C     -3.676816529174  -3.244861312697   0.239921543832 AA   -6.948176250413  -6.131899193194   0.453386009226 Bohr
+[INPUT] 29 C     -4.353026754594  -0.991587515403  -0.349534260900 AA   -8.226028379086  -1.873828832649  -0.660524024254 Bohr
+[INPUT] 30 C     -5.011823851962  -3.661886137379   0.194496265915 AA   -9.470974464770  -6.919961898987   0.367544674829 Bohr
+[INPUT] 31 H     -2.889118961742  -3.965079781445   0.489626836200 AA   -5.459643578981  -7.492914848981   0.925260623655 Bohr
+[INPUT] 32 C     -5.685364130973  -1.408152389347  -0.393039474930 AA  -10.743781125965  -2.661022357517  -0.742736963760 Bohr
+[INPUT] 33 H     -4.111821504203   0.054593848912  -0.563093641163 AA   -7.770216516041   0.103167422529  -1.064092764282 Bohr
+[INPUT] 34 C     -6.024349877815  -2.745145241484  -0.122417788658 AA  -11.384371347628  -5.187572678558  -0.231336093338 Bohr
+[INPUT] 35 H     -5.263105731217  -4.706440418581   0.407672316531 AA   -9.945828396630  -8.893883412701   0.770389026811 Bohr
+[INPUT] 36 H     -6.469998829849  -0.685164008120  -0.641089425606 AA  -12.226525814671  -1.294772325756  -1.211483435750 Bohr
+[INPUT] 37 H     -7.070318567773  -3.067121325985  -0.159246096555 AA  -13.360965706518  -5.796019296924  -0.300931508895 Bohr
+[INPUT] ---------------- BASIS SET ---------------- 
+[INPUT] l, kappa, [nprim/nctr], expnt,             c_1 c_2 ...
+[INPUT] S
+[INPUT] 0    0    [7    /1   ]  60700.928104      0.00054695944225
+                                9102.6106854      0.0042297224557
+                                2071.4166009      0.021747824159
+                                586.02476821      0.085100053589
+                                190.55395021      0.24799128459
+                                67.63038426       0.46703640406
+                                25.127306905      0.3643458755
+[INPUT] 0    0    [3    /1   ]  112.5746301       0.02167004024
+                                34.795554217      0.09360230176
+                                6.5115556215      -0.26068001422
+[INPUT] 0    0    [2    /1   ]  3.2399032261      1.2842089435
+                                1.5477160881      0.66036416584
+[INPUT] 0    0    [1    /1   ]  0.40541030112        1
+[INPUT] 0    0    [1    /1   ]  0.14550651059        1
+[INPUT] 1    0    [5    /1   ]  564.36716027      0.0024796796317
+                                133.42624379      0.01967793025
+                                42.468271189      0.089980008258
+                                15.61652758       0.25705880575
+                                6.1093988469      0.43515167292
+[INPUT] 1    0    [1    /1   ]  2.4404160198         1
+[INPUT] 1    0    [1    /1   ]  0.83882201296        1
+[INPUT] 1    0    [1    /1   ]  0.312887469          1
+[INPUT] 1    0    [1    /1   ]  0.10770109004        1
+[INPUT] 2    0    [2    /1   ]  3.756              0.2
+                                0.812                1
+[INPUT] 2    0    [1    /1   ]  0.273                1
+[INPUT] 3    0    [1    /1   ]  0.557                1
+[INPUT] C
+[INPUT] 0    0    [6    /1   ]  13575.349682      0.00022245814352
+                                2035.233368       0.0017232738252
+                                463.22562359      0.0089255715314
+                                131.20019598      0.035727984502
+                                42.853015891      0.11076259931
+                                15.584185766      0.24295627626
+[INPUT] 0    0    [2    /1   ]  6.2067138508      0.41440263448
+                                2.5764896527      0.23744968655
+[INPUT] 0    0    [1    /1   ]  0.57696339419        1
+[INPUT] 0    0    [1    /1   ]  0.22972831358        1
+[INPUT] 0    0    [1    /1   ]  0.095164440028       1
+[INPUT] 1    0    [4    /1   ]  34.697232244      0.0053333657805
+                                7.9582622826      0.035864109092
+                                2.3780826883      0.14215873329
+                                0.81433208183     0.34270471845
+[INPUT] 1    0    [1    /1   ]  0.28887547253        1
+[INPUT] 1    0    [1    /1   ]  0.10056823671        1
+[INPUT] 2    0    [1    /1   ]  1.097                1
+[INPUT] 2    0    [1    /1   ]  0.318                1
+[INPUT] 3    0    [1    /1   ]  0.761                1
+[INPUT] H
+[INPUT] 0    0    [3    /1   ]  34.061341         0.0060251978
+                                5.1235746         0.045021094
+                                1.1646626         0.20189726
+[INPUT] 0    0    [1    /1   ]  0.32723041           1
+[INPUT] 0    0    [1    /1   ]  0.10307241           1
+[INPUT] 1    0    [1    /1   ]  0.8                  1
+
+nuclear repulsion = 2045.84560231184
+number of shells = 315
+number of NR pGTOs = 1221
+number of NR cGTOs = 815
+basis = def2-tzvp
+ecp = {}
+CPU time:         3.23
+RKS
+Density fitting turned on
+Molecule built
+Calculating SCF Energy...
+
+
+******** <class 'pyscf.df.df_jk.density_fit.<locals>.DFHF'> ********
+method = DFHF-RKS-RHF
+initial guess = chkfile
+damping factor = 0
+level_shift factor = 0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+diis_start_cycle = 1
+diis_space = 8
+SCF conv_tol = 1e-10
+SCF conv_tol_grad = None
+SCF max_cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = 37_Rpet_wb97x.chk
+max_memory 50000 MB (current use 57 MB)
+XC functionals = wb97x
+small_rho_cutoff = 1e-07
+radial grids: 
+    Treutler-Ahlrichs [JCP 102, 346 (1995); DOI:10.1063/1.469408] (M4) radial grids
+    
+becke partition: Becke, JCP 88, 2547 (1988); DOI:10.1063/1.454033
+pruning grids: <function nwchem_prune at 0x7f236d0e0048>
+grids dens level: 3
+symmetrized grids: False
+atomic radii adjust function: <function treutler_atomic_radii_adjust at 0x7f236d0ccf28>
+Set gradient conv threshold to 1e-05
+atom C rad-grids = 75, ang-grids = [ 50  50  50  50  50  50  50  50  50  50  50  50  50  50  50  50  50  50
+  50  50  50  50  50  86  86  86  86  86  86  86  86  86  86 266 266 266
+ 266 266 266 266 302 302 302 302 302 302 302 302 302 302 302 302 302 302
+ 302 302 302 302 302 302 266 266 266 266 266 266 266 266 266 266 266 266
+ 266 266 266]
+atom S rad-grids = 80, ang-grids = [ 50  50  50  50  50  50  50  50  50  50  50  50  50  50  50  50  50  50
+  50  50  50  50  50  50  86  86  86  86  86  86  86  86  86  86  86  86
+  86 350 350 350 350 350 350 350 350 350 434 434 434 434 434 434 434 434
+ 434 434 434 434 434 434 434 434 434 434 350 350 350 350 350 350 350 350
+ 350 350 350 350 350 350 350 350]
+atom H rad-grids = 50, ang-grids = [ 50  50  50  50  50  50  50  50  50  50  50  50  50  50  86  86  86  86
+ 266 266 266 266 302 302 302 302 302 302 302 302 302 302 302 302 302 266
+ 266 266 266 266 266 266 266 266 266 266 266 266 266 266]
+tot grids = 475016
+Drop grids 75152
+    CPU time for setting up grids     48.58 sec, wall time      3.06 sec
+nelec by numeric integration = 182.00004810953067
+    CPU time for vxc     76.93 sec, wall time      4.92 sec
+******** <class 'pyscf.df.df.DF'> ********
+auxbasis = None
+max_memory = 50000
+_cderi_to_save = /tmp/job.15971908.hpc/tmp0cxwgite
+Default auxbasis def2-tzvp-jkfit is used for S def2-tzvp
+Default auxbasis def2-tzvp-jkfit is used for C def2-tzvp
+Default auxbasis def2-tzvp-jkfit is used for H def2-tzvp
+num shells = 698, num cGTOs = 2136
+size of aux basis 2136
+int3c2e [1/1], AO [0:315], nrow = 332520
+    CPU time for cholesky_eri     91.42 sec, wall time     14.61 sec
+    CPU time for df vj and vk    264.96 sec, wall time     27.71 sec
+Create RSH-DF object <pyscf.df.df.DF object at 0x7f238d29dc50> for omega=0.3
+******** <class 'pyscf.df.df.DF'> ********
+auxbasis = None
+max_memory = 50000
+_cderi_to_save = /tmp/job.15971908.hpc/tmp1hp_sdc2
+Default auxbasis def2-tzvp-jkfit is used for S def2-tzvp
+Default auxbasis def2-tzvp-jkfit is used for C def2-tzvp
+Default auxbasis def2-tzvp-jkfit is used for H def2-tzvp
+num shells = 698, num cGTOs = 2136
+size of aux basis 1661
+int3c2e [1/1], AO [0:315], nrow = 332520
+    CPU time for cholesky_eri    126.24 sec, wall time     10.91 sec
+    CPU time for df vj and vk    259.42 sec, wall time     19.83 sec
+E1 = -6759.744916441685  Ecoul = 2939.3414390682055  Exc = -190.61955419064083
+init E= -1965.17742925228
+cond(S) = 1079585.1830183303
+    CPU time for initialize scf    655.45 sec, wall time     56.23 sec
+  HOMO = -0.27099474814275  LUMO = -0.00887853925413311
+  mo_energy =
+[-8.88762150e+01 -8.88748577e+01 -8.88742806e+01 -1.03134156e+01
+ -1.03128894e+01 -1.03123105e+01 -1.03114305e+01 -1.02970468e+01
+ -1.02967283e+01 -1.02870852e+01 -1.02788985e+01 -1.02747277e+01
+ -1.02745858e+01 -1.02744186e+01 -1.02739808e+01 -1.02739403e+01
+ -1.02732889e+01 -1.02725728e+01 -1.02674829e+01 -1.02674487e+01
+ -1.02669725e+01 -1.02668241e+01 -1.02663894e+01 -8.06297749e+00
+ -8.06175259e+00 -8.06129116e+00 -6.02442615e+00 -6.02321783e+00
+ -6.02293233e+00 -6.02026737e+00 -6.01908411e+00 -6.01877402e+00
+ -6.01755595e+00 -6.01626974e+00 -6.01542515e+00 -1.03771219e+00
+ -1.02090483e+00 -1.00487392e+00 -9.93019323e-01 -9.39293606e-01
+ -9.14159522e-01 -8.92003574e-01 -8.76983576e-01 -8.70102998e-01
+ -8.69864320e-01 -8.62388493e-01 -8.38439739e-01 -8.16274271e-01
+ -7.56416173e-01 -7.35850907e-01 -7.28405263e-01 -7.12223408e-01
+ -6.85304312e-01 -6.80743899e-01 -6.67815003e-01 -6.50953673e-01
+ -6.45109401e-01 -6.36768208e-01 -6.26117567e-01 -6.04531544e-01
+ -5.78401742e-01 -5.74607345e-01 -5.55519705e-01 -5.45999929e-01
+ -5.34713620e-01 -5.29799584e-01 -5.21344388e-01 -5.19044474e-01
+ -5.15543137e-01 -5.11385281e-01 -5.09533547e-01 -5.02627752e-01
+ -4.96948517e-01 -4.95153995e-01 -4.84084420e-01 -4.78824038e-01
+ -4.68699061e-01 -4.60760225e-01 -4.49791487e-01 -4.46947923e-01
+ -4.39729547e-01 -4.36390217e-01 -4.24320246e-01 -3.92563489e-01
+ -3.64067445e-01 -3.54509597e-01 -3.53799496e-01 -3.49899486e-01
+ -3.39796260e-01 -3.07295597e-01 -2.70994748e-01 -8.87853925e-03
+  1.57240224e-02  5.27647424e-02  6.43581411e-02  8.83758338e-02
+  9.12566424e-02  9.91972984e-02  1.00623120e-01  1.18159920e-01
+  1.26857387e-01  1.32057687e-01  1.33218327e-01  1.34902765e-01
+  1.40395815e-01  1.47866102e-01  1.49971274e-01  1.58921428e-01
+  1.61446354e-01  1.67131612e-01  1.72042685e-01  1.73209602e-01
+  1.79504810e-01  1.85006944e-01  1.89775684e-01  1.93826202e-01
+  1.97627228e-01  2.05635933e-01  2.11853773e-01  2.14957623e-01
+  2.19714680e-01  2.29928957e-01  2.38019964e-01  2.45257033e-01
+  2.48830666e-01  2.54671138e-01  2.63556644e-01  2.65494229e-01
+  2.72040892e-01  2.77592403e-01  2.80199055e-01  2.87937327e-01
+  2.90969150e-01  2.92841475e-01  2.95934047e-01  2.99438174e-01
+  3.01202136e-01  3.02889965e-01  3.06097551e-01  3.09692684e-01
+  3.15657526e-01  3.16525992e-01  3.20827306e-01  3.23047343e-01
+  3.23630178e-01  3.29391755e-01  3.32524753e-01  3.38338035e-01
+  3.47002073e-01  3.49189575e-01  3.53184975e-01  3.55480031e-01
+  3.59889047e-01  3.63345199e-01  3.71111921e-01  3.72767058e-01
+  3.80060724e-01  3.84754674e-01  3.91522514e-01  3.92704996e-01
+  3.97681653e-01  3.99968583e-01  4.02773361e-01  4.11961823e-01
+  4.13128833e-01  4.16297029e-01  4.20200695e-01  4.24986759e-01
+  4.25498399e-01  4.29342086e-01  4.30991612e-01  4.40652154e-01
+  4.47939278e-01  4.50172255e-01  4.51923733e-01  4.58695564e-01
+  4.61444303e-01  4.68238956e-01  4.70260603e-01  4.73213054e-01
+  4.73641664e-01  4.78002580e-01  4.84622871e-01  4.87214325e-01
+  4.88996565e-01  4.90355776e-01  4.92819332e-01  4.96758966e-01
+  5.00235570e-01  5.03848163e-01  5.04587107e-01  5.07412282e-01
+  5.11341145e-01  5.20644778e-01  5.26507867e-01  5.28415006e-01
+  5.31904888e-01  5.34164232e-01  5.40194920e-01  5.40594581e-01
+  5.51658451e-01  5.57994129e-01  5.63245140e-01  5.67084943e-01
+  5.76024329e-01  5.80266211e-01  5.83674624e-01  5.90262485e-01
+  5.95247416e-01  5.98858457e-01  6.00371267e-01  6.02611274e-01
+  6.15201989e-01  6.20279187e-01  6.23274780e-01  6.37428758e-01
+  6.39956026e-01  6.48259679e-01  6.54207431e-01  6.60367086e-01
+  6.72600840e-01  6.77290139e-01  6.80795619e-01  6.86905463e-01
+  6.88379657e-01  6.96239074e-01  7.02748079e-01  7.10554559e-01
+  7.18625269e-01  7.23407726e-01  7.30113681e-01  7.31421788e-01
+  7.40368365e-01  7.41917869e-01  7.49643541e-01  7.52819506e-01
+  7.56934487e-01  7.62386797e-01  7.66941266e-01  7.70111424e-01
+  7.74736419e-01  7.77743021e-01  7.83249618e-01  7.87741384e-01
+  7.90662704e-01  7.93101508e-01  7.98836706e-01  8.07172371e-01
+  8.12022486e-01  8.16772553e-01  8.24628533e-01  8.30160187e-01
+  8.32250696e-01  8.33857504e-01  8.38342203e-01  8.45592418e-01
+  8.52001875e-01  8.55222450e-01  8.58916375e-01  8.73677519e-01
+  8.83763611e-01  8.88398267e-01  8.94005897e-01  9.01332842e-01
+  9.05355166e-01  9.05614984e-01  9.14329316e-01  9.18334756e-01
+  9.28789094e-01  9.32865137e-01  9.41590287e-01  9.52237771e-01
+  9.58700284e-01  9.66942561e-01  9.74384642e-01  9.76292059e-01
+  9.85315312e-01  9.95790824e-01  9.99259565e-01  1.00486904e+00
+  1.01540014e+00  1.02542076e+00  1.02800892e+00  1.03352089e+00
+  1.04704631e+00  1.05253851e+00  1.05651614e+00  1.06550950e+00
+  1.07258691e+00  1.07582218e+00  1.08128370e+00  1.08571814e+00
+  1.09211907e+00  1.09824267e+00  1.10758331e+00  1.11249696e+00
+  1.12587907e+00  1.12952316e+00  1.13258181e+00  1.14141010e+00
+  1.14418840e+00  1.15586935e+00  1.15852599e+00  1.17091532e+00
+  1.17385132e+00  1.17875633e+00  1.18521506e+00  1.19216779e+00
+  1.19529656e+00  1.20791249e+00  1.21387599e+00  1.22346421e+00
+  1.23165142e+00  1.24086150e+00  1.25269025e+00  1.26367244e+00
+  1.27148608e+00  1.28023419e+00  1.29553140e+00  1.29771186e+00
+  1.30840166e+00  1.31226161e+00  1.31642775e+00  1.32616585e+00
+  1.32864073e+00  1.33482551e+00  1.34438056e+00  1.36063116e+00
+  1.36433640e+00  1.36944620e+00  1.37210904e+00  1.37745980e+00
+  1.38596728e+00  1.39106275e+00  1.39575433e+00  1.40290016e+00
+  1.41078853e+00  1.41480346e+00  1.42117375e+00  1.42660147e+00
+  1.43771382e+00  1.44287293e+00  1.45171706e+00  1.45724991e+00
+  1.47098423e+00  1.47521614e+00  1.48170646e+00  1.49099611e+00
+  1.50005011e+00  1.50753951e+00  1.51920816e+00  1.52340153e+00
+  1.53311799e+00  1.54290169e+00  1.54560736e+00  1.55220627e+00
+  1.55375995e+00  1.56185733e+00  1.57563188e+00  1.57898224e+00
+  1.58805533e+00  1.58865452e+00  1.60182862e+00  1.60601346e+00
+  1.60763150e+00  1.61308863e+00  1.61412251e+00  1.61755882e+00
+  1.62124419e+00  1.62786254e+00  1.63480453e+00  1.64373838e+00
+  1.64413452e+00  1.65091840e+00  1.65344025e+00  1.66585814e+00
+  1.66857007e+00  1.67759326e+00  1.67922789e+00  1.68341538e+00
+  1.68857694e+00  1.69507302e+00  1.70103571e+00  1.70585476e+00
+  1.71018622e+00  1.71306338e+00  1.72116876e+00  1.72404214e+00
+  1.73184641e+00  1.73600975e+00  1.74444166e+00  1.74636307e+00
+  1.75850092e+00  1.76170873e+00  1.77009841e+00  1.77721341e+00
+  1.78922603e+00  1.79460728e+00  1.79932357e+00  1.80264947e+00
+  1.80605108e+00  1.81909605e+00  1.82339738e+00  1.83246819e+00
+  1.83610539e+00  1.85784896e+00  1.86782512e+00  1.87520298e+00
+  1.88396976e+00  1.89100583e+00  1.89220678e+00  1.90110559e+00
+  1.91583330e+00  1.91936632e+00  1.92702416e+00  1.93596647e+00
+  1.94262214e+00  1.94663843e+00  1.95149128e+00  1.95815299e+00
+  1.96306448e+00  1.96685321e+00  1.96866159e+00  1.97544311e+00
+  1.98439127e+00  1.98644875e+00  1.99042889e+00  1.99339362e+00
+  2.00636447e+00  2.01354819e+00  2.01612680e+00  2.02923341e+00
+  2.03842742e+00  2.04238524e+00  2.05431284e+00  2.05918359e+00
+  2.07224748e+00  2.07549313e+00  2.08129513e+00  2.08578969e+00
+  2.09513720e+00  2.10237452e+00  2.10826901e+00  2.11152781e+00
+  2.12137970e+00  2.13238274e+00  2.14418620e+00  2.15334681e+00
+  2.16249257e+00  2.16981980e+00  2.17187981e+00  2.18141181e+00
+  2.19618464e+00  2.20407884e+00  2.20989577e+00  2.21799309e+00
+  2.22555534e+00  2.23318909e+00  2.24304527e+00  2.24826444e+00
+  2.25138566e+00  2.25660403e+00  2.26103314e+00  2.27882277e+00
+  2.28154471e+00  2.28903000e+00  2.29468743e+00  2.29816431e+00
+  2.31642579e+00  2.31949149e+00  2.33390198e+00  2.34150784e+00
+  2.34833888e+00  2.35241090e+00  2.36070976e+00  2.37266056e+00
+  2.37961474e+00  2.38038289e+00  2.40054455e+00  2.40976627e+00
+  2.41139698e+00  2.45157500e+00  2.46767157e+00  2.47663329e+00
+  2.51299881e+00  2.54171296e+00  2.56213635e+00  2.56684189e+00
+  2.57012252e+00  2.57355247e+00  2.58207216e+00  2.58729676e+00
+  2.58861620e+00  2.60653324e+00  2.60847966e+00  2.61847476e+00
+  2.63190373e+00  2.63573216e+00  2.64497746e+00  2.64916846e+00
+  2.65403698e+00  2.65932996e+00  2.66896708e+00  2.67542798e+00
+  2.68623029e+00  2.69110490e+00  2.70335650e+00  2.70773933e+00
+  2.71083198e+00  2.71557665e+00  2.72664151e+00  2.73273821e+00
+  2.73944791e+00  2.74442775e+00  2.75012645e+00  2.75488110e+00
+  2.75948645e+00  2.76269147e+00  2.77247580e+00  2.77439579e+00
+  2.77859015e+00  2.78852462e+00  2.79809701e+00  2.80589251e+00
+  2.80764495e+00  2.81673863e+00  2.82113264e+00  2.82890624e+00
+  2.83229569e+00  2.83410315e+00  2.85528343e+00  2.85677543e+00
+  2.86055680e+00  2.86176102e+00  2.86624502e+00  2.87226033e+00
+  2.88181400e+00  2.88338999e+00  2.89406782e+00  2.90423762e+00
+  2.90876230e+00  2.91771644e+00  2.92132734e+00  2.92395290e+00
+  2.92742104e+00  2.92766175e+00  2.93705339e+00  2.94140229e+00
+  2.94369468e+00  2.94759023e+00  2.96068617e+00  2.96303520e+00
+  2.97406525e+00  2.98022209e+00  2.98805605e+00  2.99786348e+00
+  3.00630432e+00  3.01668462e+00  3.02472210e+00  3.02978071e+00
+  3.04115333e+00  3.04762571e+00  3.05334824e+00  3.06067146e+00
+  3.07122053e+00  3.07379802e+00  3.08965679e+00  3.09231389e+00
+  3.10950597e+00  3.12133879e+00  3.13052959e+00  3.13873379e+00
+  3.14029637e+00  3.15221900e+00  3.15442312e+00  3.15824062e+00
+  3.16655029e+00  3.17062809e+00  3.17700318e+00  3.18264785e+00
+  3.18986297e+00  3.19651108e+00  3.20285238e+00  3.20923951e+00
+  3.21198644e+00  3.21245047e+00  3.21823742e+00  3.22162524e+00
+  3.22727831e+00  3.23068725e+00  3.23559085e+00  3.24170841e+00
+  3.24340374e+00  3.24931895e+00  3.25380814e+00  3.25931131e+00
+  3.26905136e+00  3.27585073e+00  3.28362775e+00  3.29247347e+00
+  3.29828885e+00  3.30694367e+00  3.30741688e+00  3.31616066e+00
+  3.33115639e+00  3.33702179e+00  3.34266154e+00  3.34936079e+00
+  3.36078988e+00  3.36791933e+00  3.37221057e+00  3.37425559e+00
+  3.37910513e+00  3.38766160e+00  3.39312129e+00  3.39603036e+00
+  3.40235361e+00  3.40412473e+00  3.41049689e+00  3.41531444e+00
+  3.41948314e+00  3.42451965e+00  3.43048367e+00  3.43814636e+00
+  3.44196734e+00  3.44629054e+00  3.45080990e+00  3.45913850e+00
+  3.46857083e+00  3.47291399e+00  3.47513238e+00  3.48145670e+00
+  3.48865713e+00  3.49355426e+00  3.49923223e+00  3.51091135e+00
+  3.51586017e+00  3.52461546e+00  3.53561467e+00  3.54167522e+00
+  3.54724273e+00  3.54897848e+00  3.55389947e+00  3.56034960e+00
+  3.56684104e+00  3.57557394e+00  3.57857958e+00  3.58672654e+00
+  3.59749985e+00  3.60206291e+00  3.61086559e+00  3.61454553e+00
+  3.62305096e+00  3.63916559e+00  3.64490804e+00  3.65031784e+00
+  3.66234249e+00  3.67341909e+00  3.67861538e+00  3.67931500e+00
+  3.68661804e+00  3.69253477e+00  3.70039275e+00  3.70435427e+00
+  3.70952400e+00  3.71842788e+00  3.73369396e+00  3.73501631e+00
+  3.74372294e+00  3.75519205e+00  3.76055484e+00  3.78138292e+00
+  3.78618429e+00  3.78859333e+00  3.79511702e+00  3.80937124e+00
+  3.81874682e+00  3.83361264e+00  3.83631945e+00  3.84954689e+00
+  3.86742094e+00  3.87899817e+00  3.89308341e+00  3.90390781e+00
+  3.92638665e+00  3.94174979e+00  3.96211875e+00  3.97792808e+00
+  3.97866273e+00  3.99445302e+00  4.01244209e+00  4.01859442e+00
+  4.02560274e+00  4.03571253e+00  4.03840507e+00  4.04691128e+00
+  4.06570803e+00  4.09650322e+00  4.10263653e+00  4.12324578e+00
+  4.12811949e+00  4.14865314e+00  4.15230511e+00  4.18311334e+00
+  4.19774340e+00  4.20827110e+00  4.22123232e+00  4.23175651e+00
+  4.23876350e+00  4.25946566e+00  4.26392679e+00  4.28236914e+00
+  4.29085032e+00  4.29533264e+00  4.31600893e+00  4.32265626e+00
+  4.32418915e+00  4.33060752e+00  4.33110333e+00  4.33318381e+00
+  4.34967729e+00  4.35688544e+00  4.36317666e+00  4.37608334e+00
+  4.38166813e+00  4.40116678e+00  4.41327990e+00  4.43668033e+00
+  4.44825192e+00  4.45935786e+00  4.47058732e+00  4.48507782e+00
+  4.50052314e+00  4.51691888e+00  4.53958863e+00  4.54499861e+00
+  4.56362359e+00  4.56701937e+00  4.60832876e+00  4.63733425e+00
+  4.66166930e+00  4.68689117e+00  4.72391272e+00  4.74333166e+00
+  4.74865080e+00  4.77122763e+00  4.77936989e+00  4.79250237e+00
+  4.81180084e+00  4.81798905e+00  4.83091030e+00  4.83338691e+00
+  4.85445803e+00  4.87189811e+00  4.91519082e+00  4.92488218e+00
+  4.94375496e+00  4.96165774e+00  4.96239895e+00  4.98913854e+00
+  5.02442081e+00  5.03728990e+00  5.04463939e+00  5.08322051e+00
+  5.09995342e+00  5.12127029e+00  5.14284129e+00  5.16744459e+00
+  5.19201481e+00  5.24933264e+00  5.28686793e+00  5.30519243e+00
+  5.37027136e+00  5.37642108e+00  5.39704919e+00  5.47284483e+00
+  5.51563276e+00  5.57679058e+00  5.58242302e+00  5.61159460e+00
+  5.74020122e+00  5.75214361e+00  5.86670645e+00  8.97151665e+00
+  9.00221265e+00  9.01392707e+00  9.51551316e+00  9.52156022e+00
+  9.54569861e+00  9.58754629e+00  9.60653319e+00  9.62971683e+00
+  2.01722280e+01  2.02299329e+01  2.03374594e+01  2.20370990e+01
+  2.21795807e+01  2.22088350e+01  2.24844928e+01  2.25292596e+01
+  2.25471698e+01  2.25872746e+01  2.26238932e+01  2.26700036e+01
+  2.26775242e+01  2.27151230e+01  2.27688857e+01  2.28153399e+01
+  2.28305330e+01  2.28720165e+01  2.29089553e+01  2.29384204e+01
+  2.30640594e+01  2.32488474e+01  2.33666811e+01]
+nelec by numeric integration = 182.00004810952282
+    CPU time for vxc     60.64 sec, wall time      3.89 sec
+    CPU time for df vj and vk    171.18 sec, wall time     12.78 sec
+    CPU time for df vj and vk    134.01 sec, wall time      8.42 sec
+E1 = -6759.7449837070435  Ecoul = 2939.3415069059974  Exc = -190.6195547630674
+cycle= 1 E= -1965.17742925227  delta_E= 6.82e-12  |g|= 7.71e-06  |ddm|= 1.64e-05
+    CPU time for cycle= 1    370.17 sec, wall time     29.66 sec
+  HOMO = -0.27099386055362  LUMO = -0.00887767159575567
+  mo_energy =
+[-8.88762149e+01 -8.88748579e+01 -8.88742809e+01 -1.03134162e+01
+ -1.03128834e+01 -1.03123045e+01 -1.03114301e+01 -1.02970485e+01
+ -1.02967320e+01 -1.02870836e+01 -1.02788968e+01 -1.02747281e+01
+ -1.02745853e+01 -1.02744179e+01 -1.02739805e+01 -1.02739405e+01
+ -1.02732878e+01 -1.02725718e+01 -1.02674831e+01 -1.02674484e+01
+ -1.02669725e+01 -1.02668238e+01 -1.02663902e+01 -8.06297726e+00
+ -8.06175285e+00 -8.06129110e+00 -6.02442594e+00 -6.02321809e+00
+ -6.02293230e+00 -6.02026717e+00 -6.01908437e+00 -6.01877400e+00
+ -6.01755573e+00 -6.01627000e+00 -6.01542512e+00 -1.03771104e+00
+ -1.02090451e+00 -1.00487349e+00 -9.93019027e-01 -9.39292990e-01
+ -9.14158503e-01 -8.92002866e-01 -8.76983498e-01 -8.70103095e-01
+ -8.69863888e-01 -8.62388236e-01 -8.38439211e-01 -8.16273669e-01
+ -7.56415664e-01 -7.35850149e-01 -7.28405118e-01 -7.12222777e-01
+ -6.85304297e-01 -6.80743629e-01 -6.67814408e-01 -6.50953450e-01
+ -6.45108787e-01 -6.36768105e-01 -6.26117404e-01 -6.04531202e-01
+ -5.78401360e-01 -5.74607148e-01 -5.55519345e-01 -5.45999481e-01
+ -5.34712751e-01 -5.29799505e-01 -5.21344126e-01 -5.19044101e-01
+ -5.15542835e-01 -5.11384838e-01 -5.09533587e-01 -5.02627332e-01
+ -4.96947915e-01 -4.95153611e-01 -4.84084070e-01 -4.78823493e-01
+ -4.68698725e-01 -4.60760130e-01 -4.49791292e-01 -4.46947421e-01
+ -4.39729158e-01 -4.36389854e-01 -4.24319806e-01 -3.92562775e-01
+ -3.64066991e-01 -3.54509205e-01 -3.53799597e-01 -3.49899415e-01
+ -3.39795898e-01 -3.07295221e-01 -2.70993861e-01 -8.87767160e-03
+  1.57242779e-02  5.27652395e-02  6.43582512e-02  8.83761541e-02
+  9.12572705e-02  9.91975456e-02  1.00623153e-01  1.18160316e-01
+  1.26857676e-01  1.32057894e-01  1.33218505e-01  1.34903024e-01
+  1.40396007e-01  1.47866350e-01  1.49971204e-01  1.58921779e-01
+  1.61446377e-01  1.67131629e-01  1.72042733e-01  1.73209796e-01
+  1.79505110e-01  1.85007086e-01  1.89775686e-01  1.93826598e-01
+  1.97627247e-01  2.05636099e-01  2.11854001e-01  2.14957779e-01
+  2.19715008e-01  2.29929288e-01  2.38020339e-01  2.45257322e-01
+  2.48830982e-01  2.54671335e-01  2.63557008e-01  2.65494581e-01
+  2.72041058e-01  2.77592666e-01  2.80199169e-01  2.87937524e-01
+  2.90969327e-01  2.92841642e-01  2.95934164e-01  2.99438438e-01
+  3.01202337e-01  3.02890050e-01  3.06097749e-01  3.09692708e-01
+  3.15657710e-01  3.16526483e-01  3.20827547e-01  3.23047560e-01
+  3.23630412e-01  3.29391947e-01  3.32525005e-01  3.38338214e-01
+  3.47002432e-01  3.49189918e-01  3.53185278e-01  3.55480231e-01
+  3.59889363e-01  3.63345554e-01  3.71112408e-01  3.72767575e-01
+  3.80061279e-01  3.84755035e-01  3.91522843e-01  3.92705240e-01
+  3.97681844e-01  3.99968909e-01  4.02773664e-01  4.11962060e-01
+  4.13129026e-01  4.16297245e-01  4.20201058e-01  4.24986976e-01
+  4.25498618e-01  4.29342254e-01  4.30991812e-01  4.40652315e-01
+  4.47939479e-01  4.50172610e-01  4.51924121e-01  4.58695900e-01
+  4.61444586e-01  4.68239184e-01  4.70260866e-01  4.73213316e-01
+  4.73641959e-01  4.78002855e-01  4.84623048e-01  4.87214484e-01
+  4.88996648e-01  4.90356005e-01  4.92819301e-01  4.96759351e-01
+  5.00235726e-01  5.03848272e-01  5.04587143e-01  5.07412556e-01
+  5.11341212e-01  5.20644964e-01  5.26508049e-01  5.28415222e-01
+  5.31905194e-01  5.34164443e-01  5.40195417e-01  5.40594883e-01
+  5.51658662e-01  5.57994460e-01  5.63245431e-01  5.67085013e-01
+  5.76024451e-01  5.80266426e-01  5.83674921e-01  5.90262648e-01
+  5.95247699e-01  5.98858725e-01  6.00371537e-01  6.02611674e-01
+  6.15202309e-01  6.20279384e-01  6.23275027e-01  6.37429030e-01
+  6.39956351e-01  6.48260036e-01  6.54207875e-01  6.60367560e-01
+  6.72601493e-01  6.77290442e-01  6.80796123e-01  6.86905682e-01
+  6.88380132e-01  6.96239481e-01  7.02748541e-01  7.10554909e-01
+  7.18625563e-01  7.23408252e-01  7.30114072e-01  7.31422281e-01
+  7.40368592e-01  7.41918274e-01  7.49643803e-01  7.52819769e-01
+  7.56934796e-01  7.62387188e-01  7.66941583e-01  7.70111684e-01
+  7.74736733e-01  7.77743281e-01  7.83250043e-01  7.87741716e-01
+  7.90663054e-01  7.93101851e-01  7.98837076e-01  8.07172739e-01
+  8.12022891e-01  8.16772970e-01  8.24628805e-01  8.30160554e-01
+  8.32251136e-01  8.33857913e-01  8.38342739e-01  8.45592539e-01
+  8.52002140e-01  8.55222890e-01  8.58916657e-01  8.73677917e-01
+  8.83763932e-01  8.88398766e-01  8.94006251e-01  9.01333202e-01
+  9.05355639e-01  9.05615381e-01  9.14329383e-01  9.18335062e-01
+  9.28789457e-01  9.32865572e-01  9.41590654e-01  9.52238378e-01
+  9.58700534e-01  9.66943105e-01  9.74385009e-01  9.76292557e-01
+  9.85315865e-01  9.95791048e-01  9.99260051e-01  1.00486922e+00
+  1.01540042e+00  1.02542110e+00  1.02800917e+00  1.03352115e+00
+  1.04704666e+00  1.05253859e+00  1.05651639e+00  1.06550963e+00
+  1.07258749e+00  1.07582238e+00  1.08128425e+00  1.08571847e+00
+  1.09211920e+00  1.09824303e+00  1.10758339e+00  1.11249704e+00
+  1.12587922e+00  1.12952353e+00  1.13258196e+00  1.14141044e+00
+  1.14418866e+00  1.15586972e+00  1.15852631e+00  1.17091520e+00
+  1.17385148e+00  1.17875662e+00  1.18521500e+00  1.19216795e+00
+  1.19529661e+00  1.20791306e+00  1.21387631e+00  1.22346474e+00
+  1.23165205e+00  1.24086192e+00  1.25269067e+00  1.26367285e+00
+  1.27148655e+00  1.28023446e+00  1.29553208e+00  1.29771222e+00
+  1.30840208e+00  1.31226195e+00  1.31642785e+00  1.32616615e+00
+  1.32864090e+00  1.33482594e+00  1.34438093e+00  1.36063155e+00
+  1.36433653e+00  1.36944640e+00  1.37210926e+00  1.37746002e+00
+  1.38596742e+00  1.39106318e+00  1.39575479e+00  1.40290029e+00
+  1.41078884e+00  1.41480368e+00  1.42117422e+00  1.42660195e+00
+  1.43771388e+00  1.44287331e+00  1.45171733e+00  1.45725014e+00
+  1.47098458e+00  1.47521690e+00  1.48170697e+00  1.49099661e+00
+  1.50005046e+00  1.50754004e+00  1.51920881e+00  1.52340204e+00
+  1.53311838e+00  1.54290185e+00  1.54560749e+00  1.55220652e+00
+  1.55376028e+00  1.56185754e+00  1.57563199e+00  1.57898229e+00
+  1.58805553e+00  1.58865505e+00  1.60182901e+00  1.60601370e+00
+  1.60763152e+00  1.61308872e+00  1.61412253e+00  1.61755868e+00
+  1.62124428e+00  1.62786269e+00  1.63480476e+00  1.64373859e+00
+  1.64413492e+00  1.65091862e+00  1.65344045e+00  1.66585844e+00
+  1.66857050e+00  1.67759379e+00  1.67922821e+00  1.68341553e+00
+  1.68857709e+00  1.69507323e+00  1.70103603e+00  1.70585495e+00
+  1.71018652e+00  1.71306358e+00  1.72116947e+00  1.72404256e+00
+  1.73184683e+00  1.73601020e+00  1.74444203e+00  1.74636344e+00
+  1.75850079e+00  1.76170930e+00  1.77009877e+00  1.77721383e+00
+  1.78922634e+00  1.79460758e+00  1.79932386e+00  1.80264956e+00
+  1.80605133e+00  1.81909644e+00  1.82339800e+00  1.83246862e+00
+  1.83610551e+00  1.85784917e+00  1.86782541e+00  1.87520331e+00
+  1.88397022e+00  1.89100649e+00  1.89220702e+00  1.90110601e+00
+  1.91583375e+00  1.91936642e+00  1.92702461e+00  1.93596684e+00
+  1.94262239e+00  1.94663906e+00  1.95149160e+00  1.95815333e+00
+  1.96306498e+00  1.96685356e+00  1.96866208e+00  1.97544352e+00
+  1.98439123e+00  1.98644915e+00  1.99042954e+00  1.99339405e+00
+  2.00636493e+00  2.01354859e+00  2.01612760e+00  2.02923388e+00
+  2.03842782e+00  2.04238538e+00  2.05431308e+00  2.05918389e+00
+  2.07224769e+00  2.07549321e+00  2.08129528e+00  2.08579012e+00
+  2.09513684e+00  2.10237479e+00  2.10826939e+00  2.11152778e+00
+  2.12138001e+00  2.13238322e+00  2.14418669e+00  2.15334737e+00
+  2.16249336e+00  2.16982030e+00  2.17188036e+00  2.18141222e+00
+  2.19618556e+00  2.20407882e+00  2.20989610e+00  2.21799382e+00
+  2.22555582e+00  2.23318936e+00  2.24304551e+00  2.24826491e+00
+  2.25138577e+00  2.25660471e+00  2.26103372e+00  2.27882397e+00
+  2.28154521e+00  2.28903046e+00  2.29468822e+00  2.29816469e+00
+  2.31642612e+00  2.31949221e+00  2.33390233e+00  2.34150813e+00
+  2.34833918e+00  2.35241093e+00  2.36070935e+00  2.37266082e+00
+  2.37961543e+00  2.38038348e+00  2.40054519e+00  2.40976662e+00
+  2.41139704e+00  2.45157553e+00  2.46767176e+00  2.47663347e+00
+  2.51299977e+00  2.54171374e+00  2.56213665e+00  2.56684241e+00
+  2.57012261e+00  2.57355231e+00  2.58207215e+00  2.58729689e+00
+  2.58861631e+00  2.60653349e+00  2.60848008e+00  2.61847522e+00
+  2.63190392e+00  2.63573266e+00  2.64497773e+00  2.64916828e+00
+  2.65403706e+00  2.65933007e+00  2.66896758e+00  2.67542846e+00
+  2.68623056e+00  2.69110530e+00  2.70335705e+00  2.70773956e+00
+  2.71083214e+00  2.71557708e+00  2.72664174e+00  2.73273810e+00
+  2.73944809e+00  2.74442781e+00  2.75012665e+00  2.75488143e+00
+  2.75948659e+00  2.76269181e+00  2.77247625e+00  2.77439583e+00
+  2.77859053e+00  2.78852492e+00  2.79809730e+00  2.80589283e+00
+  2.80764530e+00  2.81673894e+00  2.82113312e+00  2.82890655e+00
+  2.83229627e+00  2.83410332e+00  2.85528381e+00  2.85677549e+00
+  2.86055700e+00  2.86176112e+00  2.86624541e+00  2.87226066e+00
+  2.88181415e+00  2.88339034e+00  2.89406833e+00  2.90423790e+00
+  2.90876249e+00  2.91771653e+00  2.92132791e+00  2.92395321e+00
+  2.92742129e+00  2.92766176e+00  2.93705350e+00  2.94140233e+00
+  2.94369481e+00  2.94759047e+00  2.96068669e+00  2.96303577e+00
+  2.97406585e+00  2.98022268e+00  2.98805673e+00  2.99786400e+00
+  3.00630467e+00  3.01668535e+00  3.02472264e+00  3.02978135e+00
+  3.04115395e+00  3.04762617e+00  3.05334893e+00  3.06067184e+00
+  3.07122106e+00  3.07379834e+00  3.08965743e+00  3.09231429e+00
+  3.10950660e+00  3.12134000e+00  3.13052984e+00  3.13873412e+00
+  3.14029642e+00  3.15221935e+00  3.15442344e+00  3.15824104e+00
+  3.16655069e+00  3.17062835e+00  3.17700366e+00  3.18264868e+00
+  3.18986334e+00  3.19651104e+00  3.20285270e+00  3.20923973e+00
+  3.21198657e+00  3.21245095e+00  3.21823764e+00  3.22162518e+00
+  3.22727847e+00  3.23068756e+00  3.23559095e+00  3.24170857e+00
+  3.24340368e+00  3.24931942e+00  3.25380861e+00  3.25931163e+00
+  3.26905159e+00  3.27585108e+00  3.28362810e+00  3.29247388e+00
+  3.29828955e+00  3.30694417e+00  3.30741751e+00  3.31616110e+00
+  3.33115726e+00  3.33702257e+00  3.34266210e+00  3.34936112e+00
+  3.36079060e+00  3.36791987e+00  3.37221102e+00  3.37425565e+00
+  3.37910531e+00  3.38766230e+00  3.39312160e+00  3.39603054e+00
+  3.40235401e+00  3.40412524e+00  3.41049719e+00  3.41531464e+00
+  3.41948352e+00  3.42452049e+00  3.43048394e+00  3.43814717e+00
+  3.44196788e+00  3.44629112e+00  3.45081057e+00  3.45913931e+00
+  3.46857128e+00  3.47291426e+00  3.47513299e+00  3.48145716e+00
+  3.48865754e+00  3.49355446e+00  3.49923269e+00  3.51091162e+00
+  3.51586054e+00  3.52461591e+00  3.53561446e+00  3.54167512e+00
+  3.54724283e+00  3.54897917e+00  3.55389961e+00  3.56034977e+00
+  3.56684136e+00  3.57557439e+00  3.57858011e+00  3.58672673e+00
+  3.59750014e+00  3.60206333e+00  3.61086570e+00  3.61454611e+00
+  3.62305159e+00  3.63916600e+00  3.64490848e+00  3.65031842e+00
+  3.66234300e+00  3.67341997e+00  3.67861621e+00  3.67931549e+00
+  3.68661841e+00  3.69253542e+00  3.70039341e+00  3.70435451e+00
+  3.70952478e+00  3.71842845e+00  3.73369464e+00  3.73501697e+00
+  3.74372361e+00  3.75519227e+00  3.76055529e+00  3.78138321e+00
+  3.78618504e+00  3.78859366e+00  3.79511752e+00  3.80937163e+00
+  3.81874777e+00  3.83361356e+00  3.83631999e+00  3.84954748e+00
+  3.86742158e+00  3.87899878e+00  3.89308379e+00  3.90390833e+00
+  3.92638750e+00  3.94175039e+00  3.96211935e+00  3.97792887e+00
+  3.97866360e+00  3.99445367e+00  4.01244315e+00  4.01859474e+00
+  4.02560289e+00  4.03571269e+00  4.03840520e+00  4.04691191e+00
+  4.06570807e+00  4.09650394e+00  4.10263748e+00  4.12324611e+00
+  4.12811998e+00  4.14865325e+00  4.15230570e+00  4.18311434e+00
+  4.19774396e+00  4.20827183e+00  4.22123272e+00  4.23175707e+00
+  4.23876409e+00  4.25946604e+00  4.26392717e+00  4.28236948e+00
+  4.29085067e+00  4.29533263e+00  4.31600898e+00  4.32265631e+00
+  4.32418965e+00  4.33060775e+00  4.33110354e+00  4.33318384e+00
+  4.34967761e+00  4.35688563e+00  4.36317745e+00  4.37608407e+00
+  4.38166827e+00  4.40116693e+00  4.41328068e+00  4.43668064e+00
+  4.44825247e+00  4.45935806e+00  4.47058804e+00  4.48507792e+00
+  4.50052318e+00  4.51691961e+00  4.53958923e+00  4.54499912e+00
+  4.56362403e+00  4.56702062e+00  4.60832966e+00  4.63733496e+00
+  4.66167055e+00  4.68689220e+00  4.72391318e+00  4.74333314e+00
+  4.74865112e+00  4.77122802e+00  4.77937051e+00  4.79250260e+00
+  4.81180104e+00  4.81798960e+00  4.83091021e+00  4.83338707e+00
+  4.85445842e+00  4.87189957e+00  4.91519134e+00  4.92488259e+00
+  4.94375531e+00  4.96165810e+00  4.96239930e+00  4.98913869e+00
+  5.02442108e+00  5.03729014e+00  5.04463999e+00  5.08322093e+00
+  5.09995388e+00  5.12127054e+00  5.14284181e+00  5.16744510e+00
+  5.19201501e+00  5.24933336e+00  5.28686867e+00  5.30519299e+00
+  5.37027222e+00  5.37642164e+00  5.39705038e+00  5.47284568e+00
+  5.51563325e+00  5.57679134e+00  5.58242401e+00  5.61159518e+00
+  5.74020265e+00  5.75214498e+00  5.86670717e+00  8.97151645e+00
+  9.00221278e+00  9.01392735e+00  9.51551296e+00  9.52156047e+00
+  9.54569871e+00  9.58754627e+00  9.60653336e+00  9.62971701e+00
+  2.01722281e+01  2.02299329e+01  2.03374596e+01  2.20370986e+01
+  2.21795795e+01  2.22088345e+01  2.24844941e+01  2.25292605e+01
+  2.25471696e+01  2.25872745e+01  2.26238929e+01  2.26700034e+01
+  2.26775241e+01  2.27151237e+01  2.27688863e+01  2.28153411e+01
+  2.28305334e+01  2.28720178e+01  2.29089583e+01  2.29384218e+01
+  2.30640596e+01  2.32488484e+01  2.33666839e+01]
+nelec by numeric integration = 182.00004810950048
+    CPU time for vxc     61.27 sec, wall time      3.93 sec
+    CPU time for df vj and vk    172.04 sec, wall time     12.87 sec
+    CPU time for df vj and vk    134.16 sec, wall time      8.43 sec
+E1 = -6759.744900103245  Ecoul = 2939.3414229209097  Exc = -190.6195543817691
+Extra cycle  E= -1965.17742925226  delta_E= 9.55e-12  |g|= 1.05e-05  |ddm|= 2.34e-05
+    CPU time for scf_cycle   1397.35 sec, wall time    111.78 sec
+    CPU time for SCF   1397.35 sec, wall time    111.78 sec
+converged SCF energy = -1965.17742925226
+SCF Done after  111.7785 seconds
+after SCF memory used: 10560.37109375 MB
+Converting <class 'pyscf.df.df_jk.density_fit.<locals>.DFHF'> to RHF
+Converting <class 'pyscf.df.df_jk.density_fit.<locals>.DFHF'> to RHF
+a_x = 0.56
+beta = 8.0
+alpha = 4.58
+hdiag (65884,)
+n_occ =  91
+n_vir =  724
+max_vir =  218
+Q-Gamma tensors building time = 6.344
+after Q matrix memory used: 10923.62890625 MB
+-------------------------------------------------------------------
+|---------------   In-house Developed Davidson Starts   -----------|
+Residual conv = 1e-05
+Number of excited states = 5
+Initial guess:   sTDA
+Preconditioner:  sTDA
+A matrix size =  65884 * 65884
+sTDA nstate = 10
+sTDA A diagonalization: threshold = 0.001 ; in 9 steps  2.0475 seconds
+sTDA excitation energies:
+[3.49018855 3.93524444 4.42878997 4.83518918 4.94732135 5.20470914
+ 5.25312129 5.28914407 5.39882187 5.48978759]
+Intial guess time: 2.1022 seconds
+    CPU time for df vj and vk   1727.59 sec, wall time    120.44 sec
+    CPU time for df vj and vk   1334.09 sec, wall time     84.06 sec
+Iteration  0
+subspace size:  10
+maximum residual norm 0.12672198191178147
+sTDA Preconditioning Done after  18 steps;  1.2239 seconds
+subgencost 0.2343 19.14 %
+mvcost 0.516 42.17 %
+GScost 0.2826 23.09 %
+subcost 0.0129 1.05 %
+m,new_m 10 15
+    CPU time for df vj and vk    860.48 sec, wall time     60.54 sec
+    CPU time for df vj and vk    666.59 sec, wall time     41.98 sec
+new generated guesses: 5
+Iteration  1
+subspace size:  15
+maximum residual norm 0.03409409293653459
+sTDA Preconditioning Done after  15 steps;  1.0048 seconds
+subgencost 0.1778 17.69 %
+mvcost 0.4386 43.65 %
+GScost 0.2509 24.97 %
+subcost 0.0097 0.96 %
+m,new_m 15 20
+    CPU time for df vj and vk    860.33 sec, wall time     60.51 sec
+    CPU time for df vj and vk    667.49 sec, wall time     42.01 sec
+new generated guesses: 5
+Iteration  2
+subspace size:  20
+maximum residual norm 0.018155878519841375
+sTDA Preconditioning Done after  11 steps;  0.7757 seconds
+subgencost 0.1134 14.61 %
+mvcost 0.3668 47.29 %
+GScost 0.1837 23.68 %
+subcost 0.0059 0.76 %
+m,new_m 20 25
+    CPU time for df vj and vk    860.61 sec, wall time     60.49 sec
+    CPU time for df vj and vk    667.75 sec, wall time     42.05 sec
+new generated guesses: 5
+Iteration  3
+subspace size:  25
+maximum residual norm 0.007766380029038718
+sTDA Preconditioning Done after  12 steps;  0.9037 seconds
+subgencost 0.1379 15.26 %
+mvcost 0.4212 46.61 %
+GScost 0.2245 24.84 %
+subcost 0.0071 0.79 %
+m,new_m 25 30
+    CPU time for df vj and vk    861.20 sec, wall time     60.64 sec
+    CPU time for df vj and vk    667.11 sec, wall time     42.04 sec
+new generated guesses: 5
+Iteration  4
+subspace size:  30
+maximum residual norm 0.002688303147077783
+sTDA Preconditioning Done after  20 steps;  1.2425 seconds
+subgencost 0.2618 21.07 %
+mvcost 0.4839 38.94 %
+GScost 0.3291 26.49 %
+subcost 0.0143 1.15 %
+m,new_m 30 35
+    CPU time for df vj and vk    860.79 sec, wall time     60.63 sec
+    CPU time for df vj and vk    667.34 sec, wall time     42.06 sec
+new generated guesses: 5
+Iteration  5
+subspace size:  35
+maximum residual norm 0.0007981544114418767
+sTDA Preconditioning Done after  14 steps;  0.9343 seconds
+subgencost 0.1612 17.25 %
+mvcost 0.4053 43.38 %
+GScost 0.2384 25.52 %
+subcost 0.0086 0.92 %
+m,new_m 35 40
+    CPU time for df vj and vk    860.64 sec, wall time     60.57 sec
+    CPU time for df vj and vk    666.44 sec, wall time     41.95 sec
+new generated guesses: 5
+Iteration  6
+subspace size:  40
+maximum residual norm 0.0002846987958650358
+sTDA Preconditioning Done after  8 steps;  0.5965 seconds
+subgencost 0.0724 12.13 %
+mvcost 0.2954 49.51 %
+GScost 0.1329 22.29 %
+subcost 0.0038 0.63 %
+m,new_m 40 45
+    CPU time for df vj and vk    860.93 sec, wall time     60.64 sec
+    CPU time for df vj and vk    667.17 sec, wall time     42.02 sec
+new generated guesses: 5
+Iteration  7
+subspace size:  45
+maximum residual norm 0.00011702727495533127
+sTDA Preconditioning Done after  11 steps;  0.296 seconds
+subgencost 0.0455 15.38 %
+mvcost 0.1449 48.95 %
+GScost 0.0572 19.32 %
+subcost 0.0032 1.07 %
+m,new_m 45 47
+    CPU time for df vj and vk    343.72 sec, wall time     24.78 sec
+    CPU time for df vj and vk    267.62 sec, wall time     16.91 sec
+new generated guesses: 2
+Iteration  8
+subspace size:  47
+maximum residual norm 3.8354951954244564e-05
+sTDA Preconditioning Done after  17 steps;  0.2558 seconds
+subgencost 0.0461 18.03 %
+mvcost 0.1387 54.23 %
+GScost 0.0385 15.03 %
+subcost 0.0037 1.45 %
+m,new_m 47 48
+    CPU time for df vj and vk    170.92 sec, wall time     12.80 sec
+    CPU time for df vj and vk    135.07 sec, wall time      8.49 sec
+new generated guesses: 1
+Iteration  9
+subspace size:  48
+maximum residual norm 1.1359261560220437e-05
+sTDA Preconditioning Done after  14 steps;  0.2051 seconds
+subgencost 0.0338 16.5 %
+mvcost 0.1133 55.24 %
+GScost 0.0277 13.52 %
+subcost 0.0028 1.37 %
+m,new_m 48 49
+    CPU time for df vj and vk    171.94 sec, wall time     12.25 sec
+    CPU time for df vj and vk    133.38 sec, wall time      8.38 sec
+new generated guesses: 1
+Iteration  10
+subspace size:  49
+maximum residual norm 6.117193927983947e-06
+Davidson procedure aborted
+Davidson done after  1192.9006 seconds
+Total steps = 11
+Final subspace shape =  (49, 49)
+Preconditioning time: 7.4643 0.63 %
+In-house Davidson time: 1192.9195 seconds
+Excited State energies (eV) =
+[3.65958623 4.15171066 4.55751884 5.00014003 5.15393619]
+|---------------   In-house Developed Davidson Done   -----------|
+-------------------------------------------------------------------
+|---------------   In-house Developed Davidson Starts   -----------|
+Residual conv = 1e-05
+Number of excited states = 5
+Initial guess:   Adiag
+Preconditioner:  Adiag
+A matrix size =  65884 * 65884
+Intial guess time: 0.0029 seconds
+    CPU time for df vj and vk   1726.00 sec, wall time    120.35 sec
+    CPU time for df vj and vk   1332.62 sec, wall time     84.00 sec
+Iteration  0
+subspace size:  10
+maximum residual norm 0.12781424893589427
+m,new_m 10 15
+    CPU time for df vj and vk    861.43 sec, wall time     60.63 sec
+    CPU time for df vj and vk    666.59 sec, wall time     41.95 sec
+new generated guesses: 5
+Iteration  1
+subspace size:  15
+maximum residual norm 0.05245611404448473
+m,new_m 15 20
+    CPU time for df vj and vk    861.92 sec, wall time     60.84 sec
+    CPU time for df vj and vk    668.62 sec, wall time     42.08 sec
+new generated guesses: 5
+Iteration  2
+subspace size:  20
+maximum residual norm 0.028586970355947382
+m,new_m 20 25
+    CPU time for df vj and vk    864.60 sec, wall time     61.05 sec
+    CPU time for df vj and vk    668.25 sec, wall time     42.08 sec
+new generated guesses: 5
+Iteration  3
+subspace size:  25
+maximum residual norm 0.02328692161727312
+m,new_m 25 30
+    CPU time for df vj and vk    862.74 sec, wall time     60.90 sec
+    CPU time for df vj and vk    668.50 sec, wall time     42.11 sec
+new generated guesses: 5
+Iteration  4
+subspace size:  30
+maximum residual norm 0.017145183494638352
+m,new_m 30 35
+    CPU time for df vj and vk    862.02 sec, wall time     60.86 sec
+    CPU time for df vj and vk    668.55 sec, wall time     42.09 sec
+new generated guesses: 5
+Iteration  5
+subspace size:  35
+maximum residual norm 0.02073215334362026
+m,new_m 35 40
+    CPU time for df vj and vk    864.22 sec, wall time     61.09 sec
+    CPU time for df vj and vk    667.83 sec, wall time     42.03 sec
+new generated guesses: 5
+Iteration  6
+subspace size:  40
+maximum residual norm 0.045132761359715494
+m,new_m 40 45
+    CPU time for df vj and vk    863.69 sec, wall time     61.00 sec
+    CPU time for df vj and vk    668.24 sec, wall time     42.06 sec
+new generated guesses: 5
+Iteration  7
+subspace size:  45
+maximum residual norm 0.02464661244849499
+m,new_m 45 50
+    CPU time for df vj and vk    862.96 sec, wall time     60.97 sec
+    CPU time for df vj and vk    668.08 sec, wall time     42.05 sec
+new generated guesses: 5
+Iteration  8
+subspace size:  50
+maximum residual norm 0.01625827551482953
+m,new_m 50 55
+    CPU time for df vj and vk    862.87 sec, wall time     60.93 sec
+    CPU time for df vj and vk    667.59 sec, wall time     42.03 sec
+new generated guesses: 5
+Iteration  9
+subspace size:  55
+maximum residual norm 0.00789063203091452
+m,new_m 55 60
+    CPU time for df vj and vk    863.61 sec, wall time     61.10 sec
+    CPU time for df vj and vk    667.88 sec, wall time     42.04 sec
+new generated guesses: 5
+Iteration  10
+subspace size:  60
+maximum residual norm 0.0039312160941864455
+m,new_m 60 64
+    CPU time for df vj and vk    703.42 sec, wall time     49.96 sec
+    CPU time for df vj and vk    546.53 sec, wall time     34.39 sec
+new generated guesses: 4
+Iteration  11
+subspace size:  64
+maximum residual norm 0.002269639507442817
+m,new_m 64 68
+    CPU time for df vj and vk    710.09 sec, wall time     50.33 sec
+    CPU time for df vj and vk    548.10 sec, wall time     34.49 sec
+new generated guesses: 4
+Iteration  12
+subspace size:  68
+maximum residual norm 0.0011946858275449388
+m,new_m 68 70
+    CPU time for df vj and vk    353.82 sec, wall time     25.54 sec
+    CPU time for df vj and vk    274.54 sec, wall time     17.29 sec
+new generated guesses: 2
+Iteration  13
+subspace size:  70
+maximum residual norm 0.0006014468181609044
+m,new_m 70 72
+    CPU time for df vj and vk    353.75 sec, wall time     25.53 sec
+    CPU time for df vj and vk    274.70 sec, wall time     17.31 sec
+new generated guesses: 2
+Iteration  14
+subspace size:  72
+maximum residual norm 0.00038236482158135677
+m,new_m 72 74
+    CPU time for df vj and vk    353.84 sec, wall time     25.49 sec
+    CPU time for df vj and vk    274.38 sec, wall time     17.27 sec
+new generated guesses: 2
+Iteration  15
+subspace size:  74
+maximum residual norm 0.0002016246536799046
+m,new_m 74 76
+    CPU time for df vj and vk    353.50 sec, wall time     25.48 sec
+    CPU time for df vj and vk    275.00 sec, wall time     17.32 sec
+new generated guesses: 2
+Iteration  16
+subspace size:  76
+maximum residual norm 0.00010673908449620689
+m,new_m 76 78
+    CPU time for df vj and vk    353.20 sec, wall time     25.44 sec
+    CPU time for df vj and vk    274.71 sec, wall time     17.30 sec
+new generated guesses: 2
+Iteration  17
+subspace size:  78
+maximum residual norm 5.087114696529991e-05
+m,new_m 78 80
+    CPU time for df vj and vk    353.44 sec, wall time     25.48 sec
+    CPU time for df vj and vk    275.40 sec, wall time     17.35 sec
+new generated guesses: 2
+Iteration  18
+subspace size:  80
+maximum residual norm 2.6851426241043892e-05
+m,new_m 80 82
+    CPU time for df vj and vk    353.58 sec, wall time     25.51 sec
+    CPU time for df vj and vk    274.90 sec, wall time     17.31 sec
+new generated guesses: 2
+Iteration  19
+subspace size:  82
+maximum residual norm 1.3677385956089592e-05
+m,new_m 82 83
+    CPU time for df vj and vk    177.82 sec, wall time     13.34 sec
+    CPU time for df vj and vk    138.34 sec, wall time      8.69 sec
+new generated guesses: 1
+Iteration  20
+subspace size:  83
+maximum residual norm 6.184700472423139e-06
+Davidson procedure aborted
+Davidson done after  2035.912 seconds
+Total steps = 21
+Final subspace shape =  (83, 83)
+Preconditioning time: 0.0934 0.0 %
+In-house Davidson time: 2035.9313 seconds
+Excited State energies (eV) =
+[3.65958623 4.15171066 4.55751884 5.00014003 5.15393619]
+|---------------   In-house Developed Davidson Done   -----------|
+xyzfile = 37_Rpet.xyz
+checkfile = True
+method = RKS
+functional = wb97x
+basis_set = def2-tzvp
+density_fit = True
+grid_level = 3
+nstates = 5
+pytd = False
+TDA = True
+TDDFT = False
+dynpol = False
+dynpol_omega = []
+stapol = False
+sTDA = False
+sTDDFT = False
+Truncate_test = False
+truncate_virtual = 40.0
+TDA_options = [0, 1]
+TDDFT_options = [0]
+dynpol_options = [0]
+stapol_options = [0]
+TDA_tolerance = 1e-05
+TDDFT_tolerance = 1e-05
+dynpol_tolerance = 1e-05
+stapol_tolerance = 1e-05
+max = 35
+TDA_initialTOL = 0.001
+TDDFT_initialTOL = 0.001
+dynpol_initprecTOL = 0.01
+stapol_initprecTOL = 0.01
+TDA_precondTOL = 0.01
+TDDFT_precondTOL = 0.01
+TDA_extrainitial = 8
+TDDFT_extrainitial = 8
+TDDFT_extrainitial_3n = False
+eigensolver_tol = 1e-05
+memory = 50000
+verbose = 5
+beta = []
+alpha = []

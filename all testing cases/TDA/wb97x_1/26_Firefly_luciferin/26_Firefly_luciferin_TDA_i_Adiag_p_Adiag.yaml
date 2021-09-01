@@ -1,0 +1,76 @@
+A matrix size: 39312
+Initial guess time: 0.004438638687133789
+New guess generating time: 0.03577828407287598
+SCF time: 112.09101223945618
+alpha: 4.58
+ax: 0.56
+beta: 8.0
+excitation energy(eV):
+- 4.5443165046892595
+final subspace size: 26
+functional: wb97x
+initial guess: Adiag
+initial guess threshold: 0.001
+iteration:
+- residual norms:
+  - 0.14902821432549815
+- residual norms:
+  - 0.04313783002950973
+- residual norms:
+  - 0.024045807422818363
+- residual norms:
+  - 0.012705617566019392
+- residual norms:
+  - 0.009563324867869313
+- residual norms:
+  - 0.008560216823585086
+- residual norms:
+  - 0.008522312000222711
+- residual norms:
+  - 0.0064953898267300705
+- residual norms:
+  - 0.0036789815834070167
+- residual norms:
+  - 0.002421035085772144
+- residual norms:
+  - 0.0011768513798446555
+- residual norms:
+  - 0.0007804656705777321
+- residual norms:
+  - 0.0006270234959940827
+- residual norms:
+  - 0.0006590136202551802
+- residual norms:
+  - 0.0004351470791192989
+- residual norms:
+  - 0.00025818499825229653
+- residual norms:
+  - 0.00014944991257516969
+- residual norms:
+  - 0.00011808812179149475
+- residual norms:
+  - 0.0001133736952732439
+- residual norms:
+  - 6.55327179081135e-05
+- residual norms:
+  - 5.330194403715227e-05
+- residual norms:
+  - 3.962615502363243e-05
+- residual norms:
+  - 2.2450999350545686e-05
+- residual norms:
+  - 1.233653874274842e-05
+- residual norms:
+  - 6.553992136448278e-06
+iterations: 25
+max_vir: 147
+method: RKS
+molecule: 26_Firefly_luciferin
+n_occ: 72
+n_vir: 546
+nstate: 1
+preconditioner: Adiag
+preconditioner threshold: 0.01
+threshold: 1.0e-05
+total time: 582.4409072399139
+virtual truncation tol: 40.0

@@ -1,0 +1,51 @@
+A matrix size: 57591
+Dynamic polarizability initial tensor alpha: null
+Dynamic polarizability tensor alpha: null
+Dynamic polarizability wavelength: []
+Initial guess time: 0.7129499912261963
+New guess generating time: 5.123401641845703
+SCF time: 83.61067771911621
+alpha: 1.54
+ax: 0.25
+beta: 0.6575
+excitation energy(eV):
+- 3.46626417358668
+final subspace size: 10
+functional: pbe0
+initial guess: sTDDFT
+initial guess threshold: 0.001
+initial_energies:
+- 3.2604796993689726
+iteration:
+- residual norms:
+  - 0.09197990339965606
+- residual norms:
+  - 0.018914079736454287
+- residual norms:
+  - 0.0066197983557060285
+- residual norms:
+  - 0.0021703352390740438
+- residual norms:
+  - 0.0005549013364563583
+- residual norms:
+  - 0.00018164995320854192
+- residual norms:
+  - 4.968284711541403e-05
+- residual norms:
+  - 1.3895443388037379e-05
+- residual norms:
+  - 4.365295870292067e-06
+iterations: 9
+max_vir: 219
+method: RKS
+molecule: 43_PyrImid_TMIO5
+n_occ: 79
+n_vir: 729
+nstate: 1
+overlap: 1.0130863222128395
+preconditioner: sTDDFT
+preconditioner threshold: 0.01
+semiempirical_difference: 0.042347249829058235
+threshold: 1.0e-05
+total time: 189.54397106170654
+virtual truncation tol: 40.0

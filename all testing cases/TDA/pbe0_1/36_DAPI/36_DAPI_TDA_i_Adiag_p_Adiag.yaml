@@ -1,0 +1,48 @@
+A matrix size: 48764
+Initial guess time: 0.0023238658905029297
+New guess generating time: 0.009795188903808594
+SCF time: 63.10858917236328
+alpha: 1.54
+ax: 0.25
+beta: 0.6575
+excitation energy(eV):
+- 3.6783776592148736
+final subspace size: 12
+functional: pbe0
+initial guess: Adiag
+initial guess threshold: 0.001
+iteration:
+- residual norms:
+  - 0.12329848529149583
+- residual norms:
+  - 0.025578943525651578
+- residual norms:
+  - 0.01074161275119378
+- residual norms:
+  - 0.00479132681329273
+- residual norms:
+  - 0.0019853705995203537
+- residual norms:
+  - 0.0010048089024565702
+- residual norms:
+  - 0.0003899284552200603
+- residual norms:
+  - 0.00017157272724136936
+- residual norms:
+  - 6.381050460120845e-05
+- residual norms:
+  - 2.583415201846523e-05
+- residual norms:
+  - 8.275373982628936e-06
+iterations: 11
+max_vir: 200
+method: RKS
+molecule: 36_DAPI
+n_occ: 73
+n_vir: 668
+nstate: 1
+preconditioner: Adiag
+preconditioner threshold: 0.01
+threshold: 1.0e-05
+total time: 158.0443639755249
+virtual truncation tol: 40.0

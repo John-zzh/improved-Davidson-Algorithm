@@ -1,0 +1,132 @@
+A matrix size: 202193
+Initial guess time: 2.3268187046051025
+New guess generating time: 8.023068904876709
+SCF time: 1767.672202348709
+alpha: 4.58
+ax: 0.56
+beta: 8.0
+excitation energy(eV):
+- 2.2023203578388775
+final subspace size: 10
+functional: wb97x
+initial guess: sTDA
+initial guess threshold: 0.001
+iteration:
+- preconditioning:
+  - precondition residual norms:
+    - 0.1730556718730023
+  - precondition residual norms:
+    - 0.07237604788160067
+  - precondition residual norms:
+    - 0.029651329306135975
+  - precondition residual norms:
+    - 0.013774453359938163
+  - precondition residual norms:
+    - 0.009752364267886825
+  residual norms:
+  - 0.08226776895303342
+- preconditioning:
+  - precondition residual norms:
+    - 0.24363081265697298
+  - precondition residual norms:
+    - 0.11282842487443076
+  - precondition residual norms:
+    - 0.05470608250235872
+  - precondition residual norms:
+    - 0.025963033314820663
+  - precondition residual norms:
+    - 0.009988752337523827
+  residual norms:
+  - 0.014535061420256092
+- preconditioning:
+  - precondition residual norms:
+    - 0.23529395128365427
+  - precondition residual norms:
+    - 0.0759618877307428
+  - precondition residual norms:
+    - 0.0357818190592013
+  - precondition residual norms:
+    - 0.019032931022563166
+  - precondition residual norms:
+    - 0.007471224620939813
+  residual norms:
+  - 0.0038610546842915076
+- preconditioning:
+  - precondition residual norms:
+    - 0.24765867075428938
+  - precondition residual norms:
+    - 0.09977881283912138
+  - precondition residual norms:
+    - 0.05117731852465753
+  - precondition residual norms:
+    - 0.024565401022881402
+  - precondition residual norms:
+    - 0.009666969394672379
+  residual norms:
+  - 0.0010666594630739186
+- preconditioning:
+  - precondition residual norms:
+    - 0.2157787975869776
+  - precondition residual norms:
+    - 0.08192371019880403
+  - precondition residual norms:
+    - 0.03380542259969197
+  - precondition residual norms:
+    - 0.020205901027382032
+  - precondition residual norms:
+    - 0.008082769712124556
+  residual norms:
+  - 0.00028266439735694207
+- preconditioning:
+  - precondition residual norms:
+    - 0.24301919419908122
+  - precondition residual norms:
+    - 0.08627697488016002
+  - precondition residual norms:
+    - 0.04541200527212971
+  - precondition residual norms:
+    - 0.022935679390337
+  - precondition residual norms:
+    - 0.009342299398846126
+  residual norms:
+  - 9.67048537061633e-05
+- preconditioning:
+  - precondition residual norms:
+    - 0.21662203177952116
+  - precondition residual norms:
+    - 0.07502541019268008
+  - precondition residual norms:
+    - 0.029766265117346247
+  - precondition residual norms:
+    - 0.010420003611442168
+  - precondition residual norms:
+    - 0.0036215344003117265
+  residual norms:
+  - 3.335364034883584e-05
+- preconditioning:
+  - precondition residual norms:
+    - 0.25646425395749756
+  - precondition residual norms:
+    - 0.0753397554188249
+  - precondition residual norms:
+    - 0.03728153832554788
+  - precondition residual norms:
+    - 0.01944511291275983
+  - precondition residual norms:
+    - 0.008864771089419772
+  residual norms:
+  - 1.2466731230321637e-05
+- residual norms:
+  - 3.464978351005215e-06
+iterations: 9
+max_vir: 371
+method: RKS
+molecule: 76_Protoporphyrin
+n_occ: 149
+n_vir: 1357
+nstate: 1
+preconditioner: sTDA
+preconditioner threshold: 0.01
+threshold: 1.0e-05
+total time: 3718.6547462940216
+virtual truncation tol: 40.0

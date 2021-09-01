@@ -1,0 +1,57 @@
+A matrix size: 65446
+Dynamic polarizability initial tensor alpha: null
+Dynamic polarizability tensor alpha: null
+Dynamic polarizability wavelength: []
+Initial guess time: 0.6195461750030518
+New guess generating time: 3.4154350757598877
+SCF time: 128.1772425174713
+alpha: 4.58
+ax: 0.56
+beta: 8.0
+excitation energy(eV):
+- 3.3313773251347567
+final subspace size: 13
+functional: wb97x
+initial guess: sTDDFT
+initial guess threshold: 0.001
+initial_energies:
+- 3.314884721177233
+iteration:
+- residual norms:
+  - 0.14210784664477225
+- residual norms:
+  - 0.04740410090735766
+- residual norms:
+  - 0.02960675501092751
+- residual norms:
+  - 0.011697814505033478
+- residual norms:
+  - 0.004034013013746552
+- residual norms:
+  - 0.0015430256426589573
+- residual norms:
+  - 0.0005974807411008352
+- residual norms:
+  - 0.0002400375383511427
+- residual norms:
+  - 9.11153048835741e-05
+- residual norms:
+  - 3.445625047912347e-05
+- residual norms:
+  - 1.4561236176936254e-05
+- residual norms:
+  - 6.5641326017285106e-06
+iterations: 12
+max_vir: 200
+method: RKS
+molecule: 37_Fluorescein
+n_occ: 86
+n_vir: 761
+nstate: 1
+overlap: 1.0147956773332982
+preconditioner: sTDDFT
+preconditioner threshold: 0.01
+semiempirical_difference: 0.0002720059852997198
+threshold: 1.0e-05
+total time: 385.4663722515106
+virtual truncation tol: 40.0

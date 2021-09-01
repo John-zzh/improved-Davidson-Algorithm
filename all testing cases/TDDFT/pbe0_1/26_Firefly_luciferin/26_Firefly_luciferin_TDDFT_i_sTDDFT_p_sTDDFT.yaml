@@ -1,0 +1,53 @@
+A matrix size: 39312
+Dynamic polarizability initial tensor alpha: null
+Dynamic polarizability tensor alpha: null
+Dynamic polarizability wavelength: []
+Initial guess time: 0.20554399490356445
+New guess generating time: 2.071506977081299
+SCF time: 69.77601432800293
+alpha: 1.54
+ax: 0.25
+beta: 0.6575
+excitation energy(eV):
+- 3.8238203866420255
+final subspace size: 11
+functional: pbe0
+initial guess: sTDDFT
+initial guess threshold: 0.001
+initial_energies:
+- 3.605025491900807
+iteration:
+- residual norms:
+  - 0.10338119488188738
+- residual norms:
+  - 0.02628350859149724
+- residual norms:
+  - 0.019110035673629237
+- residual norms:
+  - 0.006124660455352707
+- residual norms:
+  - 0.0020905520708085594
+- residual norms:
+  - 0.0006479869967933555
+- residual norms:
+  - 0.00022377824427917634
+- residual norms:
+  - 7.007285821381e-05
+- residual norms:
+  - 2.5939372180990884e-05
+- residual norms:
+  - 7.5516897868498934e-06
+iterations: 10
+max_vir: 162
+method: RKS
+molecule: 26_Firefly_luciferin
+n_occ: 72
+n_vir: 546
+nstate: 1
+overlap: 1.0136951231241316
+preconditioner: sTDDFT
+preconditioner threshold: 0.01
+semiempirical_difference: 0.047871205964820834
+threshold: 1.0e-05
+total time: 82.20867943763733
+virtual truncation tol: 40.0

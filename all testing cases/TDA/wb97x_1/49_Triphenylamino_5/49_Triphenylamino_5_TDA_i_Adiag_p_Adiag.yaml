@@ -1,0 +1,60 @@
+A matrix size: 100064
+Initial guess time: 0.005459308624267578
+New guess generating time: 0.03857684135437012
+SCF time: 237.825101852417
+alpha: 4.58
+ax: 0.56
+beta: 8.0
+excitation energy(eV):
+- 3.701955850810935
+final subspace size: 18
+functional: wb97x
+initial guess: Adiag
+initial guess threshold: 0.001
+iteration:
+- residual norms:
+  - 0.11172934387403938
+- residual norms:
+  - 0.04506200145750011
+- residual norms:
+  - 0.023165346936849806
+- residual norms:
+  - 0.012108147290948614
+- residual norms:
+  - 0.008797425773531455
+- residual norms:
+  - 0.004555745049221989
+- residual norms:
+  - 0.0019345825405561344
+- residual norms:
+  - 0.0008038161102755619
+- residual norms:
+  - 0.0005562841477097071
+- residual norms:
+  - 0.00034143993277425646
+- residual norms:
+  - 0.00020845881214952796
+- residual norms:
+  - 0.00014744295574305793
+- residual norms:
+  - 8.009625662823113e-05
+- residual norms:
+  - 5.364254378877515e-05
+- residual norms:
+  - 2.399595914497026e-05
+- residual norms:
+  - 1.1032840709120483e-05
+- residual norms:
+  - 6.095628123673108e-06
+iterations: 17
+max_vir: 268
+method: RKS
+molecule: 49_Triphenylamino_5
+n_occ: 106
+n_vir: 944
+nstate: 1
+preconditioner: Adiag
+preconditioner threshold: 0.01
+threshold: 1.0e-05
+total time: 1035.8170568943024
+virtual truncation tol: 40.0

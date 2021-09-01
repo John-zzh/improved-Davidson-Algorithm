@@ -1,0 +1,122 @@
+A matrix size: 100064
+Initial guess time: 0.8663115501403809
+New guess generating time: 2.2692131996154785
+SCF time: 561.4143438339233
+alpha: 1.54
+ax: 0.25
+beta: 0.6575
+excitation energy(eV):
+- 2.928059387952432
+final subspace size: 8
+functional: pbe0
+initial guess: sTDA
+initial guess threshold: 0.001
+iteration:
+- preconditioning:
+  - precondition residual norms:
+    - 0.2939672111070336
+  - precondition residual norms:
+    - 0.09551184018235875
+  - precondition residual norms:
+    - 0.1713393711844727
+  - precondition residual norms:
+    - 0.03197579128136715
+  - precondition residual norms:
+    - 0.012163074022453748
+  - precondition residual norms:
+    - 0.00502667947810389
+  residual norms:
+  - 0.05156411931004683
+- preconditioning:
+  - precondition residual norms:
+    - 0.5401930391559154
+  - precondition residual norms:
+    - 0.2715959176211266
+  - precondition residual norms:
+    - 0.1100507663884644
+  - precondition residual norms:
+    - 0.5423031491205311
+  - precondition residual norms:
+    - 0.059912541985742924
+  - precondition residual norms:
+    - 0.019627421981130974
+  - precondition residual norms:
+    - 0.0073024079129548215
+  residual norms:
+  - 0.00952515096785007
+- preconditioning:
+  - precondition residual norms:
+    - 0.32182652209461937
+  - precondition residual norms:
+    - 0.0793523460165864
+  - precondition residual norms:
+    - 1.0904748982773345
+  - precondition residual norms:
+    - 0.05251612815561938
+  - precondition residual norms:
+    - 0.02223672345804449
+  - precondition residual norms:
+    - 0.008200059933202095
+  residual norms:
+  - 0.0035884272191230022
+- preconditioning:
+  - precondition residual norms:
+    - 0.35212115595374543
+  - precondition residual norms:
+    - 0.1389870673074864
+  - precondition residual norms:
+    - 1.522386918526825
+  - precondition residual norms:
+    - 0.12946048247566475
+  - precondition residual norms:
+    - 0.051275020784191196
+  - precondition residual norms:
+    - 0.014015553831703456
+  - precondition residual norms:
+    - 0.004840912676450579
+  residual norms:
+  - 0.0007342244269582932
+- preconditioning:
+  - precondition residual norms:
+    - 0.2868356869834812
+  - precondition residual norms:
+    - 0.07873299525839006
+  - precondition residual norms:
+    - 0.14400575105915497
+  - precondition residual norms:
+    - 0.06538126028477383
+  - precondition residual norms:
+    - 0.025264047535270766
+  - precondition residual norms:
+    - 0.008759892359855127
+  residual norms:
+  - 0.00018303850647689537
+- preconditioning:
+  - precondition residual norms:
+    - 0.3233142969959571
+  - precondition residual norms:
+    - 0.06611908108678562
+  - precondition residual norms:
+    - 0.6397879484330018
+  - precondition residual norms:
+    - 0.054536429494734175
+  - precondition residual norms:
+    - 0.01571135088948617
+  - precondition residual norms:
+    - 0.005476984961834508
+  residual norms:
+  - 4.308775928971923e-05
+- residual norms:
+  - 9.415932070539452e-06
+iterations: 7
+max_vir: 297
+method: RKS
+molecule: 49_Triphenylamino_5
+n_occ: 106
+n_vir: 944
+nstate: 1
+preconditioner: sTDA
+preconditioner threshold: 0.01
+threshold: 1.0e-05
+total time: 645.5664381980896
+virtual truncation tol: 40.0

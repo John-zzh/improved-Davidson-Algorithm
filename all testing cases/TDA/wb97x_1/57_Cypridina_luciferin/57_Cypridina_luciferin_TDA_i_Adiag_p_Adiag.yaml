@@ -1,0 +1,70 @@
+A matrix size: 106272
+Initial guess time: 0.009230613708496094
+New guess generating time: 0.09851384162902832
+SCF time: 581.3822681903839
+alpha: 4.58
+ax: 0.56
+beta: 8.0
+excitation energy(eV):
+- 4.263022352495685
+final subspace size: 23
+functional: wb97x
+initial guess: Adiag
+initial guess threshold: 0.001
+iteration:
+- residual norms:
+  - 0.1381991064255643
+- residual norms:
+  - 0.040234666130458174
+- residual norms:
+  - 0.03089058742951489
+- residual norms:
+  - 0.01759705939717833
+- residual norms:
+  - 0.012353734974037864
+- residual norms:
+  - 0.01259516615963481
+- residual norms:
+  - 0.011001834645372126
+- residual norms:
+  - 0.009428910547524866
+- residual norms:
+  - 0.006714388709954185
+- residual norms:
+  - 0.003654241800622167
+- residual norms:
+  - 0.0021170432498047956
+- residual norms:
+  - 0.00101195236110517
+- residual norms:
+  - 0.0005498989218485352
+- residual norms:
+  - 0.0003815974584433257
+- residual norms:
+  - 0.0002535799542740291
+- residual norms:
+  - 0.00021909479147270226
+- residual norms:
+  - 0.00015317408368612482
+- residual norms:
+  - 7.925408760886244e-05
+- residual norms:
+  - 4.0135240555193706e-05
+- residual norms:
+  - 1.865893735445081e-05
+- residual norms:
+  - 1.0224119397626364e-05
+- residual norms:
+  - 5.580523967248034e-06
+iterations: 22
+max_vir: 262
+method: RKS
+molecule: 57_Cypridina_luciferin
+n_occ: 108
+n_vir: 984
+nstate: 1
+preconditioner: Adiag
+preconditioner threshold: 0.01
+threshold: 1.0e-05
+total time: 3347.9660959243774
+virtual truncation tol: 40.0

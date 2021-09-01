@@ -1,0 +1,46 @@
+A matrix size: 222312
+Initial guess time: 0.01232600212097168
+New guess generating time: 0.03215599060058594
+SCF time: 1392.6933422088623
+alpha: 1.54
+ax: 0.25
+beta: 0.6575
+excitation energy(eV):
+- 2.8791399294417026
+final subspace size: 11
+functional: pbe0
+initial guess: Adiag
+initial guess threshold: 0.001
+iteration:
+- residual norms:
+  - 0.02728937303503071
+- residual norms:
+  - 0.007358942709295998
+- residual norms:
+  - 0.003340778809473698
+- residual norms:
+  - 0.00102392531635486
+- residual norms:
+  - 0.00041700737805139325
+- residual norms:
+  - 0.00018658615828731658
+- residual norms:
+  - 7.928670921416187e-05
+- residual norms:
+  - 3.857654052367071e-05
+- residual norms:
+  - 1.7262681342707296e-05
+- residual norms:
+  - 7.168204433885853e-06
+iterations: 10
+max_vir: 416
+method: RKS
+molecule: 83_Dinoflagellate_luciferin
+n_occ: 157
+n_vir: 1416
+nstate: 1
+preconditioner: Adiag
+preconditioner threshold: 0.01
+threshold: 1.0e-05
+total time: 1885.0088243484497
+virtual truncation tol: 40.0

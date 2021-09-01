@@ -1,0 +1,54 @@
+A matrix size: 111777
+Initial guess time: 0.008085489273071289
+New guess generating time: 0.04895758628845215
+SCF time: 926.828262090683
+alpha: 4.58
+ax: 0.56
+beta: 8.0
+excitation energy(eV):
+- 3.1810786842082233
+final subspace size: 15
+functional: wb97x
+initial guess: Adiag
+initial guess threshold: 0.001
+iteration:
+- residual norms:
+  - 0.14151178292182978
+- residual norms:
+  - 0.04999033795338204
+- residual norms:
+  - 0.021034213108770287
+- residual norms:
+  - 0.008645363710559356
+- residual norms:
+  - 0.003139352830135623
+- residual norms:
+  - 0.0014437879360706732
+- residual norms:
+  - 0.0006253435372059014
+- residual norms:
+  - 0.00031192631473767713
+- residual norms:
+  - 0.00015536657853350364
+- residual norms:
+  - 8.325845673369692e-05
+- residual norms:
+  - 4.019437522700792e-05
+- residual norms:
+  - 1.7176762703347503e-05
+- residual norms:
+  - 1.0228174013019647e-05
+- residual norms:
+  - 6.5784503270528325e-06
+iterations: 14
+max_vir: 277
+method: RKS
+molecule: 53_Coelenterazine
+n_occ: 111
+n_vir: 1007
+nstate: 1
+preconditioner: Adiag
+preconditioner threshold: 0.01
+threshold: 1.0e-05
+total time: 2352.946372270584
+virtual truncation tol: 40.0

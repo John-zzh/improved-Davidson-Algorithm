@@ -1,0 +1,57 @@
+A matrix size: 140170
+Dynamic polarizability initial tensor alpha: null
+Dynamic polarizability tensor alpha: null
+Dynamic polarizability wavelength: []
+Initial guess time: 3.4708056449890137
+New guess generating time: 10.38269853591919
+SCF time: 457.76576232910156
+alpha: 4.58
+ax: 0.56
+beta: 8.0
+excitation energy(eV):
+- 3.297917063664401
+final subspace size: 13
+functional: wb97x
+initial guess: sTDDFT
+initial guess threshold: 0.001
+initial_energies:
+- 3.168988504205259
+iteration:
+- residual norms:
+  - 0.15747789875255436
+- residual norms:
+  - 0.054920239667877686
+- residual norms:
+  - 0.02876141239908899
+- residual norms:
+  - 0.01408503825609076
+- residual norms:
+  - 0.0053887547967322955
+- residual norms:
+  - 0.002092701576715299
+- residual norms:
+  - 0.0008649969215244099
+- residual norms:
+  - 0.0003515354352409365
+- residual norms:
+  - 0.00015358735854059753
+- residual norms:
+  - 6.087383011919956e-05
+- residual norms:
+  - 1.9802494723216953e-05
+- residual norms:
+  - 5.636864801469005e-06
+iterations: 12
+max_vir: 252
+method: RKS
+molecule: 46_Azobenzene_3a
+n_occ: 131
+n_vir: 1070
+nstate: 1
+overlap: 1.009172601350431
+preconditioner: sTDDFT
+preconditioner threshold: 0.01
+semiempirical_difference: 0.016622573444209473
+threshold: 1.0e-05
+total time: 1604.2915244102478
+virtual truncation tol: 40.0

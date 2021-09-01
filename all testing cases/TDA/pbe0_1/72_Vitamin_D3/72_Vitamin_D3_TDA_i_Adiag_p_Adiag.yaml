@@ -1,0 +1,48 @@
+A matrix size: 109675
+Initial guess time: 0.01755833625793457
+New guess generating time: 0.030079126358032227
+SCF time: 742.9720575809479
+alpha: 1.54
+ax: 0.25
+beta: 0.6575
+excitation energy(eV):
+- 4.528302781031596
+final subspace size: 12
+functional: pbe0
+initial guess: Adiag
+initial guess threshold: 0.001
+iteration:
+- residual norms:
+  - 0.11502335912773888
+- residual norms:
+  - 0.039330634987629606
+- residual norms:
+  - 0.012449424028989685
+- residual norms:
+  - 0.0044312275826013615
+- residual norms:
+  - 0.002591015198708865
+- residual norms:
+  - 0.0014606543003794297
+- residual norms:
+  - 0.0005318591055077328
+- residual norms:
+  - 0.00018740155572933456
+- residual norms:
+  - 6.142440019415735e-05
+- residual norms:
+  - 1.851631290907169e-05
+- residual norms:
+  - 6.36299838300486e-06
+iterations: 11
+max_vir: 321
+method: RKS
+molecule: 72_Vitamin_D3
+n_occ: 107
+n_vir: 1025
+nstate: 1
+preconditioner: Adiag
+preconditioner threshold: 0.01
+threshold: 1.0e-05
+total time: 1304.849368572235
+virtual truncation tol: 40.0

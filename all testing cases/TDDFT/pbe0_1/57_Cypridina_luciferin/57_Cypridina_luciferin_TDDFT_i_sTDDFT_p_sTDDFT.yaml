@@ -1,0 +1,53 @@
+A matrix size: 106272
+Dynamic polarizability initial tensor alpha: null
+Dynamic polarizability tensor alpha: null
+Dynamic polarizability wavelength: []
+Initial guess time: 1.7013545036315918
+New guess generating time: 17.46011447906494
+SCF time: 388.331524848938
+alpha: 1.54
+ax: 0.25
+beta: 0.6575
+excitation energy(eV):
+- 3.517715068937104
+final subspace size: 11
+functional: pbe0
+initial guess: sTDDFT
+initial guess threshold: 0.001
+initial_energies:
+- 3.2969232642842585
+iteration:
+- residual norms:
+  - 0.07776152051204796
+- residual norms:
+  - 0.018445452231460536
+- residual norms:
+  - 0.0150539451324465
+- residual norms:
+  - 0.00503818431392543
+- residual norms:
+  - 0.0017728120222336348
+- residual norms:
+  - 0.0005908432619314704
+- residual norms:
+  - 0.00018227256217575867
+- residual norms:
+  - 6.459373431768497e-05
+- residual norms:
+  - 2.0382003654506106e-05
+- residual norms:
+  - 7.038135205954174e-06
+iterations: 10
+max_vir: 292
+method: RKS
+molecule: 57_Cypridina_luciferin
+n_occ: 108
+n_vir: 984
+nstate: 1
+overlap: 1.0079627597959964
+preconditioner: sTDDFT
+preconditioner threshold: 0.01
+semiempirical_difference: 0.04874902100186025
+threshold: 1.0e-05
+total time: 609.8536105155945
+virtual truncation tol: 40.0

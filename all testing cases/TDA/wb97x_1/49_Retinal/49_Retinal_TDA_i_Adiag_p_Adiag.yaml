@@ -1,0 +1,62 @@
+A matrix size: 57798
+Initial guess time: 0.0032613277435302734
+New guess generating time: 0.016470670700073242
+SCF time: 111.37673354148865
+alpha: 4.58
+ax: 0.56
+beta: 8.0
+excitation energy(eV):
+- 3.6119010103138116
+final subspace size: 19
+functional: wb97x
+initial guess: Adiag
+initial guess threshold: 0.001
+iteration:
+- residual norms:
+  - 0.13366153869393357
+- residual norms:
+  - 0.03781997149874632
+- residual norms:
+  - 0.016973181014419428
+- residual norms:
+  - 0.007215232455984607
+- residual norms:
+  - 0.003354879789307188
+- residual norms:
+  - 0.001583005992946894
+- residual norms:
+  - 0.0007143095836307702
+- residual norms:
+  - 0.00031077007031837713
+- residual norms:
+  - 0.00013707616988948337
+- residual norms:
+  - 5.51079942334465e-05
+- residual norms:
+  - 3.385488032645937e-05
+- residual norms:
+  - 6.121340921508666e-05
+- residual norms:
+  - 0.00010478273444178462
+- residual norms:
+  - 0.00016235849682603258
+- residual norms:
+  - 7.37367034320045e-05
+- residual norms:
+  - 2.543005318684581e-05
+- residual norms:
+  - 1.0181770665714074e-05
+- residual norms:
+  - 2.7841860428128915e-06
+iterations: 18
+max_vir: 214
+method: RKS
+molecule: 49_Retinal
+n_occ: 78
+n_vir: 741
+nstate: 1
+preconditioner: Adiag
+preconditioner threshold: 0.01
+threshold: 1.0e-05
+total time: 481.15224957466125
+virtual truncation tol: 40.0

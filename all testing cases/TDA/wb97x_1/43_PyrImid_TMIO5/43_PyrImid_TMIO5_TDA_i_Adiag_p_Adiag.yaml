@@ -1,0 +1,58 @@
+A matrix size: 57591
+Initial guess time: 0.008545875549316406
+New guess generating time: 0.04770541191101074
+SCF time: 1520.4743196964264
+alpha: 4.58
+ax: 0.56
+beta: 8.0
+excitation energy(eV):
+- 4.097670902268675
+final subspace size: 17
+functional: wb97x
+initial guess: Adiag
+initial guess threshold: 0.001
+iteration:
+- residual norms:
+  - 0.15116536415328324
+- residual norms:
+  - 0.0395260674250273
+- residual norms:
+  - 0.024842227057402713
+- residual norms:
+  - 0.01116628947493899
+- residual norms:
+  - 0.005576315405166332
+- residual norms:
+  - 0.002946987337935075
+- residual norms:
+  - 0.0016146708568688245
+- residual norms:
+  - 0.0011482070923765693
+- residual norms:
+  - 0.0006916956455622019
+- residual norms:
+  - 0.0004002590486758937
+- residual norms:
+  - 0.0002115107848312658
+- residual norms:
+  - 0.00011171660065846506
+- residual norms:
+  - 4.947079242273259e-05
+- residual norms:
+  - 2.4047121515473013e-05
+- residual norms:
+  - 1.4452142179474032e-05
+- residual norms:
+  - 5.807480007061178e-06
+iterations: 16
+max_vir: 198
+method: RKS
+molecule: 43_PyrImid_TMIO5
+n_occ: 79
+n_vir: 729
+nstate: 1
+preconditioner: Adiag
+preconditioner threshold: 0.01
+threshold: 1.0e-05
+total time: 7435.766361713409
+virtual truncation tol: 40.0

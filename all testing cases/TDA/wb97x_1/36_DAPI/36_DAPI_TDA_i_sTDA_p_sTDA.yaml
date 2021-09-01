@@ -1,0 +1,237 @@
+A matrix size: 48764
+Initial guess time: 0.2699728012084961
+New guess generating time: 1.7718169689178467
+SCF time: 176.67158913612366
+alpha: 4.58
+ax: 0.56
+beta: 8.0
+excitation energy(eV):
+- 4.2240861141993244
+final subspace size: 11
+functional: wb97x
+initial guess: sTDA
+initial guess threshold: 0.001
+iteration:
+- preconditioning:
+  - precondition residual norms:
+    - 0.24124695298476734
+  - precondition residual norms:
+    - 0.16798744849927139
+  - precondition residual norms:
+    - 0.17645743291803787
+  - precondition residual norms:
+    - 0.7669130843395733
+  - precondition residual norms:
+    - 0.17442388902333902
+  - precondition residual norms:
+    - 0.08811694457097594
+  - precondition residual norms:
+    - 0.07622549227165316
+  - precondition residual norms:
+    - 0.0702462339505469
+  - precondition residual norms:
+    - 0.055480698053926074
+  - precondition residual norms:
+    - 0.0293830277489546
+  - precondition residual norms:
+    - 0.013476257303435253
+  - precondition residual norms:
+    - 0.008660626970311044
+  residual norms:
+  - 0.13737026994506768
+- preconditioning:
+  - precondition residual norms:
+    - 0.3728530236612983
+  - precondition residual norms:
+    - 0.4187042113484913
+  - precondition residual norms:
+    - 0.20528317362802878
+  - precondition residual norms:
+    - 0.08153915674100867
+  - precondition residual norms:
+    - 0.046170705650566156
+  - precondition residual norms:
+    - 0.025873237948035956
+  - precondition residual norms:
+    - 0.01760307391073594
+  - precondition residual norms:
+    - 0.04556796035688423
+  - precondition residual norms:
+    - 0.03700800345486127
+  - precondition residual norms:
+    - 0.012523644718409936
+  - precondition residual norms:
+    - 0.008692597276354843
+  residual norms:
+  - 0.04601120989312883
+- preconditioning:
+  - precondition residual norms:
+    - 0.24980599959945785
+  - precondition residual norms:
+    - 0.12076517000376391
+  - precondition residual norms:
+    - 0.06291822193050227
+  - precondition residual norms:
+    - 0.04029795569181225
+  - precondition residual norms:
+    - 0.031111718043231873
+  - precondition residual norms:
+    - 0.027071393490607
+  - precondition residual norms:
+    - 0.03541678715834792
+  - precondition residual norms:
+    - 0.5521150361402161
+  - precondition residual norms:
+    - 0.028072340264698514
+  - precondition residual norms:
+    - 0.010568159120842626
+  - precondition residual norms:
+    - 0.0042302306099713735
+  residual norms:
+  - 0.017983114977719365
+- preconditioning:
+  - precondition residual norms:
+    - 0.3276252394661438
+  - precondition residual norms:
+    - 0.14317238240050564
+  - precondition residual norms:
+    - 0.08033992676873032
+  - precondition residual norms:
+    - 0.0499168831246554
+  - precondition residual norms:
+    - 0.02916217434682661
+  - precondition residual norms:
+    - 0.02424331686444503
+  - precondition residual norms:
+    - 0.022050467102159937
+  - precondition residual norms:
+    - 0.042344837059401695
+  - precondition residual norms:
+    - 0.04613240476974045
+  - precondition residual norms:
+    - 0.012815511417766
+  - precondition residual norms:
+    - 0.004489747706934475
+  residual norms:
+  - 0.005758549347141605
+- preconditioning:
+  - precondition residual norms:
+    - 0.2743182269931181
+  - precondition residual norms:
+    - 0.18323278875706214
+  - precondition residual norms:
+    - 0.07862638218692011
+  - precondition residual norms:
+    - 0.03944000889933649
+  - precondition residual norms:
+    - 0.02977036725791143
+  - precondition residual norms:
+    - 0.02194899186091058
+  - precondition residual norms:
+    - 0.020266678429200522
+  - precondition residual norms:
+    - 0.05601440882616524
+  - precondition residual norms:
+    - 0.044945132688827195
+  - precondition residual norms:
+    - 0.013222667562179454
+  - precondition residual norms:
+    - 0.005316167295405532
+  residual norms:
+  - 0.0016927875934573636
+- preconditioning:
+  - precondition residual norms:
+    - 0.24820772786966414
+  - precondition residual norms:
+    - 0.12422057528118566
+  - precondition residual norms:
+    - 0.058693600131317525
+  - precondition residual norms:
+    - 0.030518107653433817
+  - precondition residual norms:
+    - 0.0189271460846072
+  - precondition residual norms:
+    - 0.013852514207025166
+  - precondition residual norms:
+    - 0.008601231909433502
+  residual norms:
+  - 0.0004735122570087848
+- preconditioning:
+  - precondition residual norms:
+    - 0.2508473518155569
+  - precondition residual norms:
+    - 0.11511060872393535
+  - precondition residual norms:
+    - 0.08120563071667483
+  - precondition residual norms:
+    - 0.06062613585538241
+  - precondition residual norms:
+    - 0.04078470247377328
+  - precondition residual norms:
+    - 0.023617883217430056
+  - precondition residual norms:
+    - 0.02736663120598413
+  - precondition residual norms:
+    - 3.3494003911428085
+  - precondition residual norms:
+    - 0.023285835181199296
+  - precondition residual norms:
+    - 0.0097788645710841
+  residual norms:
+  - 0.0001230921005936079
+- preconditioning:
+  - precondition residual norms:
+    - 0.3072035260961565
+  - precondition residual norms:
+    - 0.10455253759261125
+  - precondition residual norms:
+    - 0.04726416007717682
+  - precondition residual norms:
+    - 0.0223725538488305
+  - precondition residual norms:
+    - 0.011674862551773415
+  - precondition residual norms:
+    - 0.011964369189228673
+  - precondition residual norms:
+    - 0.011057457688112008
+  - precondition residual norms:
+    - 0.02753733698053376
+  - precondition residual norms:
+    - 0.02216383217763387
+  - precondition residual norms:
+    - 0.007746017475002608
+  residual norms:
+  - 3.640624927871727e-05
+- preconditioning:
+  - precondition residual norms:
+    - 0.3705596127468751
+  - precondition residual norms:
+    - 0.17929970103887283
+  - precondition residual norms:
+    - 0.08150157816019248
+  - precondition residual norms:
+    - 0.04425245697512416
+  - precondition residual norms:
+    - 0.033140145182329085
+  - precondition residual norms:
+    - 0.023731679560357738
+  - precondition residual norms:
+    - 0.012078261589944786
+  - precondition residual norms:
+    - 0.008169427359896038
+  residual norms:
+  - 1.0852213568527269e-05
+- residual norms:
+  - 3.940679245578566e-06
+iterations: 10
+max_vir: 181
+method: RKS
+molecule: 36_DAPI
+n_occ: 73
+n_vir: 668
+nstate: 1
+preconditioner: sTDA
+preconditioner threshold: 0.01
+threshold: 1.0e-05
+total time: 414.16311740875244
+virtual truncation tol: 40.0

@@ -1,0 +1,48 @@
+A matrix size: 75780
+Initial guess time: 0.012591361999511719
+New guess generating time: 0.023163318634033203
+SCF time: 352.9470145702362
+alpha: 1.54
+ax: 0.25
+beta: 0.6575
+excitation energy(eV):
+- 2.877287350224848
+final subspace size: 12
+functional: pbe0
+initial guess: Adiag
+initial guess threshold: 0.001
+iteration:
+- residual norms:
+  - 0.10669541989158499
+- residual norms:
+  - 0.02892558951248997
+- residual norms:
+  - 0.011635589068243288
+- residual norms:
+  - 0.0040241636090922175
+- residual norms:
+  - 0.0016042297163448794
+- residual norms:
+  - 0.0005831691059602384
+- residual norms:
+  - 0.00023682857974303352
+- residual norms:
+  - 8.687271538718789e-05
+- residual norms:
+  - 4.0626754491796216e-05
+- residual norms:
+  - 1.3965600914567852e-05
+- residual norms:
+  - 4.9886242734990805e-06
+iterations: 11
+max_vir: 266
+method: RKS
+molecule: 47_Dihydroisobenzofuran_C5
+n_occ: 90
+n_vir: 842
+nstate: 1
+preconditioner: Adiag
+preconditioner threshold: 0.01
+threshold: 1.0e-05
+total time: 614.9035201072693
+virtual truncation tol: 40.0

@@ -1,0 +1,66 @@
+A matrix size: 65446
+Initial guess time: 0.004307985305786133
+New guess generating time: 0.0334169864654541
+SCF time: 237.79074239730835
+alpha: 4.58
+ax: 0.56
+beta: 8.0
+excitation energy(eV):
+- 3.5481245894327165
+final subspace size: 21
+functional: wb97x
+initial guess: Adiag
+initial guess threshold: 0.001
+iteration:
+- residual norms:
+  - 0.1531031747898968
+- residual norms:
+  - 0.047182145727324286
+- residual norms:
+  - 0.02247433803150591
+- residual norms:
+  - 0.011219327953329394
+- residual norms:
+  - 0.006831964755206189
+- residual norms:
+  - 0.004892580825338547
+- residual norms:
+  - 0.0029924695424273493
+- residual norms:
+  - 0.0016126629909234153
+- residual norms:
+  - 0.0008217213599553217
+- residual norms:
+  - 0.00040916988788972536
+- residual norms:
+  - 0.00025385805828180514
+- residual norms:
+  - 0.00029994789803280465
+- residual norms:
+  - 0.000385628548483683
+- residual norms:
+  - 0.0005066380104828466
+- residual norms:
+  - 0.0002466348814778663
+- residual norms:
+  - 0.00013863590706329334
+- residual norms:
+  - 7.900557925794428e-05
+- residual norms:
+  - 4.229667317233922e-05
+- residual norms:
+  - 1.8848162051715125e-05
+- residual norms:
+  - 8.36011444345355e-06
+iterations: 20
+max_vir: 200
+method: RKS
+molecule: 37_Fluorescein
+n_occ: 86
+n_vir: 761
+nstate: 1
+preconditioner: Adiag
+preconditioner threshold: 0.01
+threshold: 1.0e-05
+total time: 1167.1270673274994
+virtual truncation tol: 40.0

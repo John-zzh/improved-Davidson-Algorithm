@@ -1,0 +1,52 @@
+A matrix size: 170610
+Initial guess time: 0.011028766632080078
+New guess generating time: 0.06833910942077637
+SCF time: 1527.6376695632935
+alpha: 4.58
+ax: 0.56
+beta: 8.0
+excitation energy(eV):
+- 3.293395156522151
+final subspace size: 14
+functional: wb97x
+initial guess: Adiag
+initial guess threshold: 0.001
+iteration:
+- residual norms:
+  - 0.13581548372834162
+- residual norms:
+  - 0.04230847688572212
+- residual norms:
+  - 0.01919370450610556
+- residual norms:
+  - 0.006505575959731899
+- residual norms:
+  - 0.0021855267588132394
+- residual norms:
+  - 0.0010030637639448297
+- residual norms:
+  - 0.0005602763040117823
+- residual norms:
+  - 0.00023296312869910464
+- residual norms:
+  - 9.842263166846307e-05
+- residual norms:
+  - 4.4178357664936686e-05
+- residual norms:
+  - 3.063852582468969e-05
+- residual norms:
+  - 1.6044664364790487e-05
+- residual norms:
+  - 8.781286636683896e-06
+iterations: 13
+max_vir: 327
+method: RKS
+molecule: 70_Merocyanine
+n_occ: 141
+n_vir: 1210
+nstate: 1
+preconditioner: Adiag
+preconditioner threshold: 0.01
+threshold: 1.0e-05
+total time: 3102.930034637451
+virtual truncation tol: 40.0

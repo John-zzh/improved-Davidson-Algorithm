@@ -1,0 +1,66 @@
+A matrix size: 39312
+Initial guess time: 0.0018336772918701172
+New guess generating time: 0.014187097549438477
+SCF time: 61.87191367149353
+alpha: 1.54
+ax: 0.25
+beta: 0.6575
+excitation energy(eV):
+- 3.9882785942852954
+final subspace size: 21
+functional: pbe0
+initial guess: Adiag
+initial guess threshold: 0.001
+iteration:
+- residual norms:
+  - 0.12420004712503614
+- residual norms:
+  - 0.02743980536546199
+- residual norms:
+  - 0.012845919614187155
+- residual norms:
+  - 0.012360951125695005
+- residual norms:
+  - 0.020026640003317275
+- residual norms:
+  - 0.02163352131755534
+- residual norms:
+  - 0.01221109102561286
+- residual norms:
+  - 0.005327901540052072
+- residual norms:
+  - 0.0046463685638261955
+- residual norms:
+  - 0.0029698722998487666
+- residual norms:
+  - 0.001858814115340938
+- residual norms:
+  - 0.000822262920154033
+- residual norms:
+  - 0.0004810635493805555
+- residual norms:
+  - 0.0003242218383706346
+- residual norms:
+  - 0.00019583106526614068
+- residual norms:
+  - 0.000106851829224509
+- residual norms:
+  - 5.988916215906858e-05
+- residual norms:
+  - 2.655022603673844e-05
+- residual norms:
+  - 1.3549531584584928e-05
+- residual norms:
+  - 7.930372399311068e-06
+iterations: 20
+max_vir: 162
+method: RKS
+molecule: 26_Firefly_luciferin
+n_occ: 72
+n_vir: 546
+nstate: 1
+preconditioner: Adiag
+preconditioner threshold: 0.01
+threshold: 1.0e-05
+total time: 159.28948616981506
+virtual truncation tol: 40.0

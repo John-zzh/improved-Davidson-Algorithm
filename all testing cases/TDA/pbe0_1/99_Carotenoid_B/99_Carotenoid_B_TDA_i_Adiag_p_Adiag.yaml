@@ -1,0 +1,48 @@
+A matrix size: 224298
+Initial guess time: 0.016329050064086914
+New guess generating time: 0.07668042182922363
+SCF time: 2621.2077803611755
+alpha: 1.54
+ax: 0.25
+beta: 0.6575
+excitation energy(eV):
+- 2.1547527642511777
+final subspace size: 12
+functional: pbe0
+initial guess: Adiag
+initial guess threshold: 0.001
+iteration:
+- residual norms:
+  - 0.11553589540327457
+- residual norms:
+  - 0.04002459093710981
+- residual norms:
+  - 0.011116854252710353
+- residual norms:
+  - 0.005422885651150766
+- residual norms:
+  - 0.0019343161181965291
+- residual norms:
+  - 0.0007186029457342979
+- residual norms:
+  - 0.00029623956340152303
+- residual norms:
+  - 0.00018608482145496825
+- residual norms:
+  - 8.051942791029575e-05
+- residual norms:
+  - 1.805056875592221e-05
+- residual norms:
+  - 6.420860124919269e-06
+iterations: 11
+max_vir: 480
+method: RKS
+molecule: 99_Carotenoid_B
+n_occ: 153
+n_vir: 1466
+nstate: 1
+preconditioner: Adiag
+preconditioner threshold: 0.01
+threshold: 1.0e-05
+total time: 4996.060625553131
+virtual truncation tol: 40.0
