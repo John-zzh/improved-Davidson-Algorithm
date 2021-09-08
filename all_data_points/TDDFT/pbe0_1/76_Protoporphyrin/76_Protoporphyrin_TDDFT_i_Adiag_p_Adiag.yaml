@@ -1,0 +1,67 @@
+A matrix size: 202193
+Dynamic polarizability initial tensor alpha: null
+Dynamic polarizability tensor alpha: null
+Dynamic polarizability wavelength: []
+Initial guess time: 0.0435636043548584
+New guess generating time: 0.08759474754333496
+SCF time: 1067.1852161884308
+alpha: 1.54
+ax: 0.25
+beta: 0.6575
+excitation energy(eV):
+- 2.179823396072682
+final subspace size: 18
+functional: pbe0
+initial guess: Adiag
+initial guess threshold: 0.001
+initial_energies:
+- 2.9848939344147523
+iteration:
+- residual norms:
+  - 0.17209742958021643
+- residual norms:
+  - 0.16484490564211288
+- residual norms:
+  - 0.04662876238291181
+- residual norms:
+  - 0.020800537983937467
+- residual norms:
+  - 0.013591499137373194
+- residual norms:
+  - 0.010192689240467333
+- residual norms:
+  - 0.013511296905991475
+- residual norms:
+  - 0.010063993523146887
+- residual norms:
+  - 0.0038203562934440837
+- residual norms:
+  - 0.001759087745797465
+- residual norms:
+  - 0.0007697805227790441
+- residual norms:
+  - 0.00041744055777390875
+- residual norms:
+  - 0.00017881136959753142
+- residual norms:
+  - 7.960933611586125e-05
+- residual norms:
+  - 3.209176121270454e-05
+- residual norms:
+  - 1.4483487829716869e-05
+- residual norms:
+  - 6.493131137711563e-06
+iterations: 17
+max_vir: 403
+method: RKS
+molecule: 76_Protoporphyrin
+n_occ: 149
+n_vir: 1357
+nstate: 1
+overlap: 0.7254688829892072
+preconditioner: Adiag
+preconditioner threshold: 0.01
+semiempirical_difference: 0.6481385717063908
+threshold: 1.0e-05
+total time: 2807.1660442352295
+virtual truncation tol: 40.0

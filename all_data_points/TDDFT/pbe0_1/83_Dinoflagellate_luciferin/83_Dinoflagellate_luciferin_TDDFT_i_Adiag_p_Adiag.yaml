@@ -1,0 +1,57 @@
+A matrix size: 222312
+Dynamic polarizability initial tensor alpha: null
+Dynamic polarizability tensor alpha: null
+Dynamic polarizability wavelength: []
+Initial guess time: 0.046015024185180664
+New guess generating time: 0.0689077377319336
+SCF time: 1502.151249885559
+alpha: 1.54
+ax: 0.25
+beta: 0.6575
+excitation energy(eV):
+- 2.872312977330575
+final subspace size: 13
+functional: pbe0
+initial guess: Adiag
+initial guess threshold: 0.001
+initial_energies:
+- 3.6177258506587475
+iteration:
+- residual norms:
+  - 0.038243327500302744
+- residual norms:
+  - 0.010798975014129637
+- residual norms:
+  - 0.0058141695843968
+- residual norms:
+  - 0.002236871415611938
+- residual norms:
+  - 0.0010288208657452409
+- residual norms:
+  - 0.000521188775255821
+- residual norms:
+  - 0.0002637959500050582
+- residual norms:
+  - 0.00013651354743840963
+- residual norms:
+  - 5.4647449311180974e-05
+- residual norms:
+  - 2.9544030881243435e-05
+- residual norms:
+  - 1.368797439235074e-05
+- residual norms:
+  - 6.53954367064722e-06
+iterations: 12
+max_vir: 416
+method: RKS
+molecule: 83_Dinoflagellate_luciferin
+n_occ: 157
+n_vir: 1416
+nstate: 1
+overlap: 0.9988138847858787
+preconditioner: Adiag
+preconditioner threshold: 0.01
+semiempirical_difference: 0.555640351723362
+threshold: 1.0e-05
+total time: 2181.6961879730225
+virtual truncation tol: 40.0

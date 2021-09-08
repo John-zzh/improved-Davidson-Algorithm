@@ -1,0 +1,51 @@
+A matrix size: 202193
+Dynamic polarizability initial tensor alpha: null
+Dynamic polarizability tensor alpha: null
+Dynamic polarizability wavelength: []
+Initial guess time: 4.841070890426636
+New guess generating time: 31.763922929763794
+SCF time: 1067.1852161884308
+alpha: 1.54
+ax: 0.25
+beta: 0.6575
+excitation energy(eV):
+- 2.1798233955229174
+final subspace size: 10
+functional: pbe0
+initial guess: sTDDFT
+initial guess threshold: 0.001
+initial_energies:
+- 1.9500300152170056
+iteration:
+- residual norms:
+  - 0.07302415612399844
+- residual norms:
+  - 0.014949986457736238
+- residual norms:
+  - 0.004588960218738262
+- residual norms:
+  - 0.0014992688815070342
+- residual norms:
+  - 0.0003850784357772082
+- residual norms:
+  - 0.0001383928177676566
+- residual norms:
+  - 4.101769683702634e-05
+- residual norms:
+  - 1.0711964126654179e-05
+- residual norms:
+  - 3.915555835901554e-06
+iterations: 9
+max_vir: 403
+method: RKS
+molecule: 76_Protoporphyrin
+n_occ: 149
+n_vir: 1357
+nstate: 1
+overlap: 1.0069916915689683
+preconditioner: sTDDFT
+preconditioner threshold: 0.01
+semiempirical_difference: 0.05280499763241741
+threshold: 1.0e-05
+total time: 1562.0990254878998
+virtual truncation tol: 40.0

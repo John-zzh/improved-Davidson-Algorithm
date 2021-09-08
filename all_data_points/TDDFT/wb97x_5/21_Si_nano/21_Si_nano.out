@@ -1,0 +1,926 @@
+curpath /scratch/pbsjobs/job.16219467.hpc
+lib.num_threads() =  20
+at beginning memory used: 0.05 GB
+mol.max_memory 50000
+
+
+System: uname_result(system='Linux', node='compt244', release='3.10.0-1127.el7.x86_64', version='#1 SMP Tue Feb 18 16:39:12 EST 2020', machine='x86_64', processor='x86_64')  Threads 20
+Python 3.7.0 (default, Aug 23 2018, 14:24:33) 
+[GCC 6.3.0]
+numpy 1.18.1  scipy 1.4.1
+Date: Mon Aug 30 14:50:29 2021
+PySCF version 1.7.4
+PySCF path  /home/zzz6/.local/lib/python3.7/site-packages/pyscf
+
+[CONFIG] conf_file None
+[INPUT] verbose = 5
+[INPUT] max_memory = 50000 
+[INPUT] num. atoms = 21
+[INPUT] num. electrons = 132
+[INPUT] charge = 0
+[INPUT] spin (= nelec alpha-beta = 2S) = 0
+[INPUT] symmetry False subgroup None
+[INPUT] Mole.unit = angstrom
+[INPUT]  1 Si    -0.589299802045   3.760122738525  -0.398556019827 AA   -1.113615231125   7.105602170561  -0.753161722770 Bohr
+[INPUT]  2 Si     0.179527116579   1.587477701699  -0.874867877849 AA    0.339257082267   2.999898085066  -1.653260684314 Bohr
+[INPUT]  3 Si     2.543452334338   1.489259144713  -0.876279327934 AA    4.806428322785   2.814291912011  -1.655927938414 Bohr
+[INPUT]  4 Si     0.023215453175   4.261178126172   1.822830187218 AA    0.043870848359   8.052459626452   3.444649825431 Bohr
+[INPUT]  5 H     -0.341194493580   0.657704410960   0.174973251626 AA   -0.644764148075   1.242881207634   0.330651524699 Bohr
+[INPUT]  6 Si     2.304561485223   3.787068260108   2.219656695101 AA    4.354990044292   7.156521826637   4.194543244299 Bohr
+[INPUT]  7 Si     3.477347492520   3.349623889994   0.224090243263 AA    6.571234400806   6.329871772389   0.423469186954 Bohr
+[INPUT]  8 H      2.400939237630   2.581709827798   3.100290288425 AA    4.537117600842   4.878724507635   5.858699551772 Bohr
+[INPUT]  9 H      2.944949606116   4.934755007512   2.928577477275 AA    5.565148206204   9.325335456023   5.534209366619 Bohr
+[INPUT] 10 H      3.025448155740   1.483577793593  -2.291640105165 AA    5.717268418420   2.803555714378  -4.330572174831 Bohr
+[INPUT] 11 H      2.978615677954   0.210497256511  -0.234787202896 AA    5.628767861669   0.397782164779  -0.443683511026 Bohr
+[INPUT] 12 H     -0.798778679492   3.419633493269   2.747459545118 AA   -1.509472938382   6.462170748668   5.191946078594 Bohr
+[INPUT] 13 Si     0.715017265467   5.331725985809  -1.538170099142 AA    1.351186806068  10.075501884406  -2.906720220373 Bohr
+[INPUT] 14 H     -2.062684380555   3.886924433424  -0.626032300816 AA   -3.897908560667   7.345222646051  -1.183029593674 Bohr
+[INPUT] 15 Si     2.909954561647   5.163825864270  -1.137346433214 AA    5.499017156442   9.758216638416  -2.149273267526 Bohr
+[INPUT] 16 H      4.947244575338   3.178845754872   0.444994541873 AA    9.348937318630   6.007147868944   0.840917811066 Bohr
+[INPUT] 17 O      1.702059522049   6.129963931494  -0.326608414372 AA    3.216426344381  11.583952983985  -0.617200453142 Bohr
+[INPUT] 18 H      0.086523977487   6.278730073052  -2.502488334536 AA    0.163506620659  11.865080248139  -4.729017582192 Bohr
+[INPUT] 19 H      3.967971076115   5.969123884539  -1.810753868890 AA    7.498378604054  11.280009345379  -3.421828891198 Bohr
+[INPUT] 20 H     -0.334924117481   1.120623877938  -2.198659075125 AA   -0.632914854550   2.117672217951  -4.154863493276 Bohr
+[INPUT] 21 H     -0.258726064227   5.695988543748   2.115716829869 AA   -0.488921402676  10.763858356344   3.998125365585 Bohr
+[INPUT] ---------------- BASIS SET ---------------- 
+[INPUT] l, kappa, [nprim/nctr], expnt,             c_1 c_2 ...
+[INPUT] H
+[INPUT] 0    0    [3    /1   ]  34.061341         0.0060251978
+                                5.1235746         0.045021094
+                                1.1646626         0.20189726
+[INPUT] 0    0    [1    /1   ]  0.32723041           1
+[INPUT] 0    0    [1    /1   ]  0.10307241           1
+[INPUT] 1    0    [1    /1   ]  0.8                  1
+[INPUT] O
+[INPUT] 0    0    [6    /1   ]  27032.382631      0.00021726302465
+                                4052.3871392      0.0016838662199
+                                922.3272271       0.0087395616265
+                                261.24070989      0.035239968808
+                                85.354641351      0.11153519115
+                                31.035035245      0.25588953961
+[INPUT] 0    0    [2    /1   ]  12.260860728      0.39768730901
+                                4.9987076005      0.2462784943
+[INPUT] 0    0    [1    /1   ]  1.1703108158         1
+[INPUT] 0    0    [1    /1   ]  0.46474740994        1
+[INPUT] 0    0    [1    /1   ]  0.18504536357        1
+[INPUT] 1    0    [4    /1   ]  63.274954801      0.0060685103418
+                                14.627049379      0.041912575824
+                                4.4501223456      0.16153841088
+                                1.5275799647      0.35706951311
+[INPUT] 1    0    [1    /1   ]  0.52935117943        1
+[INPUT] 1    0    [1    /1   ]  0.1747842127         1
+[INPUT] 2    0    [1    /1   ]  2.314                1
+[INPUT] 2    0    [1    /1   ]  0.645                1
+[INPUT] 3    0    [1    /1   ]  1.428                1
+[INPUT] Si
+[INPUT] 0    0    [7    /1   ]  44773.358078      0.00055914765868
+                                6717.1992104      0.0043206040189
+                                1528.8960325      0.02218709646
+                                432.54746585      0.086489249116
+                                140.61505226      0.24939889716
+                                49.857636724      0.46017197366
+                                18.434974885      0.34250236575
+[INPUT] 0    0    [3    /1   ]  86.533886111      0.021300063007
+                                26.624606846      0.094676139318
+                                4.4953057159      -0.32616264859
+[INPUT] 0    0    [2    /1   ]  2.103504571       1.398080385
+                                1.0106094922      0.63865786699
+[INPUT] 0    0    [1    /1   ]  0.23701751489        1
+[INPUT] 0    0    [1    /1   ]  0.085703405362       1
+[INPUT] 1    0    [5    /1   ]  394.47503628      0.0026285693959
+                                93.137683104      0.020556257749
+                                29.519608742      0.092070262801
+                                10.781663791      0.25565889739
+                                4.1626574778      0.42111707185
+[INPUT] 1    0    [1    /1   ]  1.6247972989         1
+[INPUT] 1    0    [1    /1   ]  0.54306660493        1
+[INPUT] 1    0    [1    /1   ]  0.20582073956        1
+[INPUT] 1    0    [1    /1   ]  0.070053487306       1
+[INPUT] 2    0    [2    /1   ]  2.303              0.2
+                                0.476                1
+[INPUT] 2    0    [1    /1   ]  0.16                 1
+[INPUT] 3    0    [1    /1   ]  0.336                1
+
+nuclear repulsion = 1280.37208714691
+number of shells = 163
+number of NR pGTOs = 646
+number of NR cGTOs = 399
+basis = def2-tzvp
+ecp = {}
+CPU time:         2.28
+RKS
+Density fitting turned on
+Molecule built
+Calculating SCF Energy...
+
+
+******** <class 'pyscf.df.df_jk.density_fit.<locals>.DFHF'> ********
+method = DFHF-RKS-RHF
+initial guess = chkfile
+damping factor = 0
+level_shift factor = 0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+diis_start_cycle = 1
+diis_space = 8
+SCF conv_tol = 1e-10
+SCF conv_tol_grad = None
+SCF max_cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = 21_Si_nano_wb97x.chk
+max_memory 50000 MB (current use 55 MB)
+XC functionals = wb97x
+small_rho_cutoff = 1e-07
+radial grids: 
+    Treutler-Ahlrichs [JCP 102, 346 (1995); DOI:10.1063/1.469408] (M4) radial grids
+    
+becke partition: Becke, JCP 88, 2547 (1988); DOI:10.1063/1.454033
+pruning grids: <function nwchem_prune at 0x7fd1d5ecae18>
+grids dens level: 3
+symmetrized grids: False
+atomic radii adjust function: <function treutler_atomic_radii_adjust at 0x7fd1d5ecad90>
+Set gradient conv threshold to 1e-05
+atom Si rad-grids = 80, ang-grids = [ 50  50  50  50  50  50  50  50  50  50  50  50  50  50  50  50  50  50
+  50  50  50  50  50  50  86  86  86  86  86  86  86  86  86  86  86  86
+  86  86 350 350 350 350 350 350 350 350 350 434 434 434 434 434 434 434
+ 434 434 434 434 434 434 434 434 434 434 434 434 350 350 350 350 350 350
+ 350 350 350 350 350 350 350 350]
+atom H rad-grids = 50, ang-grids = [ 50  50  50  50  50  50  50  50  50  50  50  50  50  50  86  86  86  86
+ 266 266 266 266 302 302 302 302 302 302 302 302 302 302 302 302 302 266
+ 266 266 266 266 266 266 266 266 266 266 266 266 266 266]
+atom O rad-grids = 75, ang-grids = [ 50  50  50  50  50  50  50  50  50  50  50  50  50  50  50  50  50  50
+  50  50  50  50  86  86  86  86  86  86  86  86  86 266 266 266 266 266
+ 266 266 302 302 302 302 302 302 302 302 302 302 302 302 302 302 302 302
+ 302 302 302 266 266 266 266 266 266 266 266 266 266 266 266 266 266 266
+ 266 266 266]
+tot grids = 284150
+Drop grids 35160
+    CPU time for setting up grids     16.20 sec, wall time      0.86 sec
+nelec by numeric integration = 132.00001859045176
+    CPU time for vxc     33.30 sec, wall time      1.93 sec
+******** <class 'pyscf.df.df.DF'> ********
+auxbasis = None
+max_memory = 50000
+_cderi_to_save = /tmp/job.16219467.hpc/tmppblksf76
+Default auxbasis def2-tzvp-jkfit is used for H def2-tzvp
+Default auxbasis def2-tzvp-jkfit is used for O def2-tzvp
+Default auxbasis def2-tzvp-jkfit is used for Si def2-tzvp
+num shells = 401, num cGTOs = 1317
+size of aux basis 1317
+int3c2e [1/1], AO [0:163], nrow = 79800
+    CPU time for cholesky_eri     18.33 sec, wall time      2.58 sec
+    CPU time for df vj and vk     33.85 sec, wall time      3.65 sec
+Create RSH-DF object <pyscf.df.df.DF object at 0x7fd1f0a18748> for omega=0.3
+******** <class 'pyscf.df.df.DF'> ********
+auxbasis = None
+max_memory = 50000
+_cderi_to_save = /tmp/job.16219467.hpc/tmph5qzud64
+Default auxbasis def2-tzvp-jkfit is used for H def2-tzvp
+Default auxbasis def2-tzvp-jkfit is used for O def2-tzvp
+Default auxbasis def2-tzvp-jkfit is used for Si def2-tzvp
+num shells = 401, num cGTOs = 1317
+size of aux basis 987
+int3c2e [1/1], AO [0:163], nrow = 79800
+    CPU time for cholesky_eri     22.06 sec, wall time      1.44 sec
+    CPU time for df vj and vk     34.55 sec, wall time      2.19 sec
+E1 = -5877.9884049847615  Ecoul = 2379.617002122667  Exc = -180.5027346003527
+init E= -2398.50205031554
+cond(S) = 12197.11414508922
+    CPU time for initialize scf    120.92 sec, wall time      8.84 sec
+  HOMO = -0.322463439410472  LUMO = 0.0181705164261607
+  mo_energy =
+[-6.61417416e+01 -6.61409803e+01 -6.61174235e+01 -6.61172458e+01
+ -6.61148484e+01 -6.61146585e+01 -6.61143449e+01 -6.61130565e+01
+ -1.91859600e+01 -5.40045661e+00 -5.39971389e+00 -5.38051245e+00
+ -5.38027729e+00 -5.37871765e+00 -5.37819068e+00 -5.37761604e+00
+ -5.37590477e+00 -3.75763666e+00 -3.75696376e+00 -3.75551789e+00
+ -3.75437976e+00 -3.75420580e+00 -3.75359539e+00 -3.73574117e+00
+ -3.73554023e+00 -3.73537071e+00 -3.73535871e+00 -3.73513903e+00
+ -3.73512762e+00 -3.73396426e+00 -3.73350211e+00 -3.73346196e+00
+ -3.73341818e+00 -3.73292182e+00 -3.73286876e+00 -3.73277473e+00
+ -3.73255773e+00 -3.73239650e+00 -3.73111721e+00 -3.73090287e+00
+ -3.73057920e+00 -1.09089841e+00 -7.34918742e-01 -6.95507069e-01
+ -6.85598453e-01 -6.56767590e-01 -6.19783986e-01 -6.11350757e-01
+ -5.92422514e-01 -5.58299617e-01 -5.19033982e-01 -4.93157715e-01
+ -4.78994410e-01 -4.78533358e-01 -4.70580095e-01 -4.51085067e-01
+ -4.42517525e-01 -4.39580535e-01 -4.37245890e-01 -4.13361267e-01
+ -3.85753813e-01 -3.76532660e-01 -3.70892139e-01 -3.66000579e-01
+ -3.63953977e-01 -3.22463439e-01  1.81705164e-02  2.46604201e-02
+  3.63007718e-02  4.08072942e-02  4.60207318e-02  6.02696674e-02
+  6.41180096e-02  7.28700586e-02  7.93431969e-02  8.32441627e-02
+  9.61568412e-02  1.09646272e-01  1.16561185e-01  1.21346688e-01
+  1.39318072e-01  1.45669633e-01  1.54075350e-01  1.62947808e-01
+  1.67631656e-01  1.72333574e-01  1.78285298e-01  1.80433786e-01
+  1.84548792e-01  1.87728308e-01  1.99989155e-01  2.02958713e-01
+  2.09218207e-01  2.11396293e-01  2.15453338e-01  2.21776000e-01
+  2.27144802e-01  2.28327221e-01  2.36229421e-01  2.43414146e-01
+  2.65744222e-01  2.69978982e-01  2.74231544e-01  2.80923594e-01
+  2.82558442e-01  2.92217289e-01  2.97873065e-01  3.05848562e-01
+  3.20643014e-01  3.21849660e-01  3.30592730e-01  3.40784905e-01
+  3.47441890e-01  3.48637519e-01  3.55625414e-01  3.67094578e-01
+  3.74912726e-01  3.80595474e-01  3.86296938e-01  3.97703834e-01
+  4.06428356e-01  4.07853926e-01  4.17788365e-01  4.19799953e-01
+  4.31310045e-01  4.38357681e-01  4.41002128e-01  4.45362139e-01
+  4.48847077e-01  4.55296546e-01  4.62982393e-01  4.63716400e-01
+  4.68545174e-01  4.70699384e-01  4.76746467e-01  4.79328981e-01
+  4.84417463e-01  4.87176841e-01  4.91913140e-01  4.97075691e-01
+  5.22046095e-01  5.38288368e-01  5.45619319e-01  5.52772594e-01
+  5.63293278e-01  5.67611852e-01  5.82804253e-01  5.91976386e-01
+  6.01579339e-01  6.03351747e-01  6.05875089e-01  6.15124408e-01
+  6.30437664e-01  6.34228728e-01  6.39016346e-01  6.44530202e-01
+  6.47446371e-01  6.49608066e-01  6.54551211e-01  6.60818327e-01
+  6.97905191e-01  7.00342219e-01  7.04681302e-01  7.17794292e-01
+  7.36352490e-01  7.40734813e-01  7.50244111e-01  7.60590183e-01
+  7.73565512e-01  7.75593894e-01  7.94472611e-01  8.08864729e-01
+  8.21673447e-01  8.38499102e-01  8.64681159e-01  9.05401205e-01
+  9.11376330e-01  9.26505213e-01  9.33395217e-01  9.58366268e-01
+  9.73996948e-01  9.81366758e-01  9.91895298e-01  9.97055538e-01
+  1.00316310e+00  1.01885929e+00  1.02648154e+00  1.03213120e+00
+  1.04077426e+00  1.04657552e+00  1.05984454e+00  1.06397178e+00
+  1.08162494e+00  1.08789054e+00  1.09763580e+00  1.09852372e+00
+  1.10108885e+00  1.11258365e+00  1.11818670e+00  1.12403967e+00
+  1.12521606e+00  1.13359897e+00  1.14055476e+00  1.14462432e+00
+  1.15088774e+00  1.15278772e+00  1.15965339e+00  1.16418128e+00
+  1.16987566e+00  1.17195834e+00  1.18129302e+00  1.18269272e+00
+  1.18519933e+00  1.19220734e+00  1.19698239e+00  1.19843845e+00
+  1.20222606e+00  1.20803970e+00  1.21440080e+00  1.21679248e+00
+  1.22203506e+00  1.22966801e+00  1.24606410e+00  1.24740950e+00
+  1.25121757e+00  1.26103742e+00  1.26511531e+00  1.27607675e+00
+  1.28548435e+00  1.29218195e+00  1.29508415e+00  1.30054823e+00
+  1.31255134e+00  1.31527268e+00  1.32077886e+00  1.32960136e+00
+  1.33314365e+00  1.34351873e+00  1.35005606e+00  1.36011842e+00
+  1.36519299e+00  1.37637692e+00  1.39182797e+00  1.40068681e+00
+  1.42154935e+00  1.42795617e+00  1.43575202e+00  1.44640698e+00
+  1.44775832e+00  1.45583863e+00  1.48970977e+00  1.49542584e+00
+  1.51203113e+00  1.52320620e+00  1.53947136e+00  1.55737205e+00
+  1.55901618e+00  1.56748839e+00  1.59625844e+00  1.61808411e+00
+  1.62641221e+00  1.64788505e+00  1.64896766e+00  1.67260076e+00
+  1.68123992e+00  1.68786124e+00  1.69578207e+00  1.69866094e+00
+  1.71433868e+00  1.72014123e+00  1.73070408e+00  1.74140477e+00
+  1.74429992e+00  1.75841149e+00  1.76017489e+00  1.77656660e+00
+  1.78420110e+00  1.79118744e+00  1.79855333e+00  1.80751714e+00
+  1.82035815e+00  1.83739548e+00  1.84013931e+00  1.84775703e+00
+  1.86209695e+00  1.86722653e+00  1.88345740e+00  1.89999264e+00
+  1.90124133e+00  1.91606460e+00  1.93430573e+00  1.96336766e+00
+  1.97419822e+00  2.00108630e+00  2.00494647e+00  2.01135734e+00
+  2.01694187e+00  2.02395825e+00  2.03399383e+00  2.04047716e+00
+  2.04459090e+00  2.05443954e+00  2.06541815e+00  2.06726613e+00
+  2.07452952e+00  2.08351732e+00  2.08468869e+00  2.10335389e+00
+  2.10642788e+00  2.11335795e+00  2.12428819e+00  2.13600041e+00
+  2.14615275e+00  2.16333764e+00  2.16927695e+00  2.17576092e+00
+  2.19315971e+00  2.19747993e+00  2.20472893e+00  2.21645774e+00
+  2.22442748e+00  2.24326403e+00  2.25041616e+00  2.27296121e+00
+  2.34296700e+00  2.36062036e+00  2.40077698e+00  2.41009786e+00
+  2.42297123e+00  2.42393723e+00  2.42535943e+00  2.42969287e+00
+  2.47172603e+00  2.48352653e+00  2.49276378e+00  2.51133296e+00
+  2.52252561e+00  2.63940079e+00  2.74747187e+00  2.82028676e+00
+  2.86970781e+00  2.88171313e+00  2.93017955e+00  2.96073952e+00
+  2.96774152e+00  2.99047452e+00  3.03997229e+00  3.05072863e+00
+  3.05502554e+00  3.11552669e+00  3.12427407e+00  3.21819609e+00
+  3.29081348e+00  3.56508059e+00  5.27448412e+00  5.27927264e+00
+  5.29395032e+00  5.30291290e+00  5.32391956e+00  5.36525863e+00
+  5.36948220e+00  6.27601544e+00  6.30460250e+00  6.31392506e+00
+  6.31951042e+00  6.33517308e+00  6.34506092e+00  6.35936131e+00
+  6.36319121e+00  6.36620170e+00  6.37691766e+00  6.37853461e+00
+  6.41085207e+00  6.42080602e+00  6.45404044e+00  6.46122438e+00
+  6.48218636e+00  6.52025165e+00  6.52762805e+00  6.55574983e+00
+  6.57047430e+00  6.57683264e+00  6.58334685e+00  6.60198801e+00
+  6.65310132e+00  6.68656410e+00  6.70882392e+00  6.71539150e+00
+  6.87888615e+00  7.11476304e+00  1.03041758e+01  1.05614955e+01
+  1.05779572e+01  1.06142176e+01  1.07192327e+01  1.07224348e+01
+  1.07661382e+01  1.11020545e+01  4.36522594e+01]
+nelec by numeric integration = 132.0000185904501
+    CPU time for vxc     39.88 sec, wall time      2.24 sec
+    CPU time for df vj and vk     15.71 sec, wall time      1.22 sec
+    CPU time for df vj and vk     11.69 sec, wall time      0.59 sec
+E1 = -5877.98841920598  Ecoul = 2379.61701892477  Exc = -180.50273718123526
+cycle= 1 E= -2398.50205031554  delta_E= 1.82e-12  |g|= 5.1e-06  |ddm|= 4.3e-06
+    CPU time for cycle= 1     68.68 sec, wall time      4.18 sec
+  HOMO = -0.322463176902245  LUMO = 0.0181704116241973
+  mo_energy =
+[-6.61417418e+01 -6.61409815e+01 -6.61174236e+01 -6.61172461e+01
+ -6.61148482e+01 -6.61146584e+01 -6.61143452e+01 -6.61130563e+01
+ -1.91859541e+01 -5.40045671e+00 -5.39971470e+00 -5.38051257e+00
+ -5.38027753e+00 -5.37871752e+00 -5.37819093e+00 -5.37761586e+00
+ -5.37590461e+00 -3.75763676e+00 -3.75696460e+00 -3.75551812e+00
+ -3.75438005e+00 -3.75420634e+00 -3.75359623e+00 -3.73574132e+00
+ -3.73554037e+00 -3.73537089e+00 -3.73535890e+00 -3.73513927e+00
+ -3.73512785e+00 -3.73396413e+00 -3.73350198e+00 -3.73346221e+00
+ -3.73341804e+00 -3.73292206e+00 -3.73286901e+00 -3.73277456e+00
+ -3.73255755e+00 -3.73239632e+00 -3.73111705e+00 -3.73090271e+00
+ -3.73057904e+00 -1.09089615e+00 -7.34918744e-01 -6.95507063e-01
+ -6.85598426e-01 -6.56767370e-01 -6.19783771e-01 -6.11350639e-01
+ -5.92422322e-01 -5.58299469e-01 -5.19033301e-01 -4.93156959e-01
+ -4.78993384e-01 -4.78533251e-01 -4.70579990e-01 -4.51085018e-01
+ -4.42516898e-01 -4.39580490e-01 -4.37245743e-01 -4.13361192e-01
+ -3.85753487e-01 -3.76532548e-01 -3.70892155e-01 -3.66000366e-01
+ -3.63953863e-01 -3.22463177e-01  1.81704116e-02  2.46605090e-02
+  3.63007747e-02  4.08072668e-02  4.60207202e-02  6.02697075e-02
+  6.41179404e-02  7.28700393e-02  7.93431661e-02  8.32442094e-02
+  9.61568264e-02  1.09646283e-01  1.16561282e-01  1.21346722e-01
+  1.39318057e-01  1.45669667e-01  1.54075373e-01  1.62947788e-01
+  1.67631622e-01  1.72333545e-01  1.78285343e-01  1.80433792e-01
+  1.84548804e-01  1.87728306e-01  1.99989127e-01  2.02958722e-01
+  2.09218253e-01  2.11396322e-01  2.15453345e-01  2.21775996e-01
+  2.27144858e-01  2.28327217e-01  2.36229458e-01  2.43414159e-01
+  2.65744237e-01  2.69979011e-01  2.74231557e-01  2.80923647e-01
+  2.82558431e-01  2.92217313e-01  2.97873075e-01  3.05848593e-01
+  3.20643035e-01  3.21849663e-01  3.30592779e-01  3.40784896e-01
+  3.47441910e-01  3.48637531e-01  3.55625393e-01  3.67094594e-01
+  3.74912718e-01  3.80595476e-01  3.86296959e-01  3.97703855e-01
+  4.06428487e-01  4.07853889e-01  4.17788361e-01  4.19799973e-01
+  4.31310031e-01  4.38357691e-01  4.41002157e-01  4.45362197e-01
+  4.48847079e-01  4.55296550e-01  4.62982412e-01  4.63716450e-01
+  4.68545221e-01  4.70699340e-01  4.76746533e-01  4.79328985e-01
+  4.84417458e-01  4.87176853e-01  4.91913129e-01  4.97075734e-01
+  5.22046126e-01  5.38288403e-01  5.45619338e-01  5.52772736e-01
+  5.63293296e-01  5.67611920e-01  5.82804290e-01  5.91976345e-01
+  6.01579356e-01  6.03351766e-01  6.05875129e-01  6.15124419e-01
+  6.30437670e-01  6.34228708e-01  6.39016329e-01  6.44530220e-01
+  6.47446413e-01  6.49608161e-01  6.54551210e-01  6.60818329e-01
+  6.97905185e-01  7.00342328e-01  7.04681358e-01  7.17794361e-01
+  7.36352497e-01  7.40734936e-01  7.50244288e-01  7.60590239e-01
+  7.73565743e-01  7.75594059e-01  7.94472607e-01  8.08864856e-01
+  8.21673606e-01  8.38499461e-01  8.64681184e-01  9.05401375e-01
+  9.11376535e-01  9.26505199e-01  9.33395322e-01  9.58366239e-01
+  9.73996956e-01  9.81366806e-01  9.91895297e-01  9.97055594e-01
+  1.00316313e+00  1.01885931e+00  1.02648155e+00  1.03213120e+00
+  1.04077427e+00  1.04657552e+00  1.05984455e+00  1.06397178e+00
+  1.08162492e+00  1.08789058e+00  1.09763574e+00  1.09852379e+00
+  1.10108888e+00  1.11258365e+00  1.11818669e+00  1.12403966e+00
+  1.12521603e+00  1.13359898e+00  1.14055476e+00  1.14462423e+00
+  1.15088772e+00  1.15278770e+00  1.15965339e+00  1.16418127e+00
+  1.16987563e+00  1.17195832e+00  1.18129301e+00  1.18269264e+00
+  1.18519929e+00  1.19220740e+00  1.19698236e+00  1.19843845e+00
+  1.20222606e+00  1.20803968e+00  1.21440074e+00  1.21679247e+00
+  1.22203506e+00  1.22966808e+00  1.24606413e+00  1.24740942e+00
+  1.25121755e+00  1.26103736e+00  1.26511532e+00  1.27607677e+00
+  1.28548440e+00  1.29218197e+00  1.29508412e+00  1.30054815e+00
+  1.31255130e+00  1.31527267e+00  1.32077881e+00  1.32960130e+00
+  1.33314367e+00  1.34351878e+00  1.35005605e+00  1.36011842e+00
+  1.36519298e+00  1.37637686e+00  1.39182795e+00  1.40068682e+00
+  1.42154940e+00  1.42795624e+00  1.43575208e+00  1.44640700e+00
+  1.44775829e+00  1.45583864e+00  1.48970980e+00  1.49542580e+00
+  1.51203115e+00  1.52320612e+00  1.53947134e+00  1.55737203e+00
+  1.55901616e+00  1.56748848e+00  1.59625844e+00  1.61808411e+00
+  1.62641220e+00  1.64788505e+00  1.64896763e+00  1.67260076e+00
+  1.68123985e+00  1.68786122e+00  1.69578206e+00  1.69866092e+00
+  1.71433867e+00  1.72014122e+00  1.73070404e+00  1.74140473e+00
+  1.74429989e+00  1.75841151e+00  1.76017492e+00  1.77656660e+00
+  1.78420101e+00  1.79118742e+00  1.79855333e+00  1.80751714e+00
+  1.82035814e+00  1.83739545e+00  1.84013934e+00  1.84775702e+00
+  1.86209692e+00  1.86722652e+00  1.88345736e+00  1.89999258e+00
+  1.90124141e+00  1.91606463e+00  1.93430573e+00  1.96336763e+00
+  1.97419819e+00  2.00108648e+00  2.00494648e+00  2.01135737e+00
+  2.01694189e+00  2.02395830e+00  2.03399407e+00  2.04047715e+00
+  2.04459088e+00  2.05443958e+00  2.06541819e+00  2.06726613e+00
+  2.07452962e+00  2.08351735e+00  2.08468874e+00  2.10335396e+00
+  2.10642799e+00  2.11335794e+00  2.12428824e+00  2.13600046e+00
+  2.14615286e+00  2.16333767e+00  2.16927694e+00  2.17576114e+00
+  2.19316016e+00  2.19748000e+00  2.20472912e+00  2.21645815e+00
+  2.22442781e+00  2.24326487e+00  2.25041621e+00  2.27296192e+00
+  2.34296781e+00  2.36062116e+00  2.40077703e+00  2.41009786e+00
+  2.42297123e+00  2.42393722e+00  2.42535946e+00  2.42969290e+00
+  2.47172600e+00  2.48352646e+00  2.49276380e+00  2.51133303e+00
+  2.52252564e+00  2.63940068e+00  2.74747187e+00  2.82028686e+00
+  2.86970783e+00  2.88171330e+00  2.93017962e+00  2.96073964e+00
+  2.96774177e+00  2.99047539e+00  3.03997227e+00  3.05072880e+00
+  3.05502564e+00  3.11552747e+00  3.12427417e+00  3.21819854e+00
+  3.29081560e+00  3.56508264e+00  5.27448623e+00  5.27927486e+00
+  5.29395269e+00  5.30291522e+00  5.32392181e+00  5.36526095e+00
+  5.36948446e+00  6.27601523e+00  6.30460239e+00  6.31392495e+00
+  6.31951047e+00  6.33517310e+00  6.34506100e+00  6.35936118e+00
+  6.36319117e+00  6.36620162e+00  6.37691769e+00  6.37853455e+00
+  6.41085204e+00  6.42080605e+00  6.45404068e+00  6.46122425e+00
+  6.48218659e+00  6.52025182e+00  6.52762817e+00  6.55574996e+00
+  6.57047526e+00  6.57683301e+00  6.58334753e+00  6.60198806e+00
+  6.65310209e+00  6.68656680e+00  6.70882663e+00  6.71539384e+00
+  6.87888765e+00  7.11476485e+00  1.03041757e+01  1.05614954e+01
+  1.05779571e+01  1.06142176e+01  1.07192326e+01  1.07224346e+01
+  1.07661382e+01  1.11020542e+01  4.36522649e+01]
+nelec by numeric integration = 132.00001859045824
+    CPU time for vxc     38.66 sec, wall time      2.17 sec
+    CPU time for df vj and vk     15.75 sec, wall time      1.19 sec
+    CPU time for df vj and vk     11.94 sec, wall time      0.62 sec
+E1 = -5877.988393438348  Ecoul = 2379.616989037142  Exc = -180.50273306123177
+Extra cycle  E= -2398.50205031553  delta_E= 7.28e-12  |g|= 7.24e-06  |ddm|= 5.44e-06
+    CPU time for scf_cycle    257.24 sec, wall time     17.12 sec
+    CPU time for SCF    257.24 sec, wall time     17.12 sec
+converged SCF energy = -2398.50205031553
+SCF Done after 17.14 seconds
+after SCF memory used: 1.74 GB
+Converting <class 'pyscf.df.df_jk.density_fit.<locals>.DFHF'> to RHF
+Converting <class 'pyscf.df.df_jk.density_fit.<locals>.DFHF'> to RHF
+hdiag shape (21978,)
+n_occ =  66
+n_vir =  333
+max_vir =  138
+A_size =  21978
+A_reduced_size = 9108
+a_x = 0.56
+beta = 8.0
+alpha = 4.58
+Q-Gamma tensors building time = 0.07
+after Q matrix memory used: 1.86 GB
+TDDFT
+|-------- In-house Developed TDDFT Starts ---------|
+Residual conv = 1e-05
+
+Number of excited states = 5
+Initial guess:   sTDDFT
+Preconditioner:  sTDDFT
+A matrix size =  21978
+setting initial guess
+sTDDFT Convergence tol = 1.00e-03
+sTDDFT diagonalization Converged
+after  9 iterations; 2.7994 seconds
+final subspace 69
+max_norm =  8.84e-04
+MVcost     0.4861s 17.36%
+GScost     1.6358s 58.43%
+subgencost 0.4737s 16.92%
+subcost    0.0431s 1.54%
+sTDDFT excitation energy:
+[4.86285812 4.87823593 5.60923932 5.70612814 5.88014446 5.94504976
+ 6.23333893 6.36820966 6.50678237 6.5288548 ]
+new_m = 10
+initial guess done
+
+iteration 0
+beginning of step 0 memory used: 1.98 GB
+    CPU time for df vj and vk    153.99 sec, wall time      9.95 sec
+    CPU time for df vj and vk    112.19 sec, wall time      5.74 sec
+subspace size: 10
+Maximum residual norm:  1.02e-01
+unconverged states [0, 1, 2, 3, 4]
+sTDDFT_preconditioner conv 0.01
+sTDDFT preconditioning Done
+after 13 steps; 1.1920 s
+final subspace 42
+max_norm =  9.21e-03
+initial_cost 0.0325s  2.73%
+MVcost     0.3166s  26.56%
+GScost     0.4168s  34.97%
+subgencost 0.3148s  26.41%
+subcost    0.0208s  1.74%
+m & new_m 10 15
+
+iteration 1
+beginning of step 1 memory used: 2.01 GB
+    CPU time for df vj and vk     77.14 sec, wall time      5.06 sec
+    CPU time for df vj and vk     56.90 sec, wall time      2.90 sec
+subspace size: 15
+Maximum residual norm:  3.50e-02
+unconverged states [0, 1, 2, 3, 4]
+sTDDFT_preconditioner conv 0.01
+sTDDFT preconditioning Done
+after 8 steps; 0.6804 s
+final subspace 33
+max_norm =  7.99e-03
+initial_cost 0.0197s  2.89%
+MVcost     0.2090s  30.72%
+GScost     0.2506s  36.82%
+subgencost 0.1430s  21.02%
+subcost    0.0093s  1.37%
+m & new_m 15 20
+
+iteration 2
+beginning of step 2 memory used: 2.01 GB
+    CPU time for df vj and vk     77.42 sec, wall time      5.13 sec
+    CPU time for df vj and vk     56.95 sec, wall time      2.90 sec
+subspace size: 20
+Maximum residual norm:  1.48e-02
+unconverged states [0, 1, 2, 3, 4]
+sTDDFT_preconditioner conv 0.01
+sTDDFT preconditioning Done
+after 10 steps; 0.7176 s
+final subspace 32
+max_norm =  8.68e-03
+initial_cost 0.0206s  2.87%
+MVcost     0.2079s  28.97%
+GScost     0.2302s  32.07%
+subgencost 0.1872s  26.08%
+subcost    0.0117s  1.63%
+m & new_m 20 25
+
+iteration 3
+beginning of step 3 memory used: 2.01 GB
+    CPU time for df vj and vk     77.41 sec, wall time      5.13 sec
+    CPU time for df vj and vk     56.78 sec, wall time      2.93 sec
+subspace size: 25
+Maximum residual norm:  7.91e-03
+unconverged states [0, 1, 2, 3, 4]
+sTDDFT_preconditioner conv 0.01
+sTDDFT preconditioning Done
+after 8 steps; 0.6305 s
+final subspace 30
+max_norm =  9.59e-03
+initial_cost 0.0198s  3.13%
+MVcost     0.2052s  32.54%
+GScost     0.2098s  33.27%
+subgencost 0.1378s  21.86%
+subcost    0.0088s  1.40%
+m & new_m 25 30
+
+iteration 4
+beginning of step 4 memory used: 2.01 GB
+    CPU time for df vj and vk     76.65 sec, wall time      5.05 sec
+    CPU time for df vj and vk     56.68 sec, wall time      2.91 sec
+subspace size: 30
+Maximum residual norm:  5.71e-03
+unconverged states [0, 1, 2, 3, 4]
+sTDDFT_preconditioner conv 0.01
+sTDDFT preconditioning Done
+after 8 steps; 0.6862 s
+final subspace 32
+max_norm =  7.94e-03
+initial_cost 0.0214s  3.12%
+MVcost     0.2188s  31.88%
+GScost     0.2435s  35.49%
+subgencost 0.1426s  20.78%
+subcost    0.0096s  1.40%
+m & new_m 30 35
+
+iteration 5
+beginning of step 5 memory used: 2.01 GB
+    CPU time for df vj and vk     76.84 sec, wall time      5.06 sec
+    CPU time for df vj and vk     56.97 sec, wall time      2.92 sec
+subspace size: 35
+Maximum residual norm:  3.14e-03
+unconverged states [0, 1, 2, 3, 4]
+sTDDFT_preconditioner conv 0.01
+sTDDFT preconditioning Done
+after 8 steps; 0.6365 s
+final subspace 30
+max_norm =  6.75e-03
+initial_cost 0.0216s  3.39%
+MVcost     0.2042s  32.09%
+GScost     0.2115s  33.23%
+subgencost 0.1401s  22.01%
+subcost    0.0091s  1.43%
+m & new_m 35 40
+
+iteration 6
+beginning of step 6 memory used: 2.01 GB
+    CPU time for df vj and vk     77.08 sec, wall time      5.09 sec
+    CPU time for df vj and vk     55.96 sec, wall time      2.84 sec
+subspace size: 40
+Maximum residual norm:  1.43e-03
+unconverged states [0, 1, 2, 3, 4]
+sTDDFT_preconditioner conv 0.01
+sTDDFT preconditioning Done
+after 8 steps; 0.6601 s
+final subspace 31
+max_norm =  6.97e-03
+initial_cost 0.0193s  2.92%
+MVcost     0.2110s  31.97%
+GScost     0.2259s  34.23%
+subgencost 0.1441s  21.84%
+subcost    0.0092s  1.40%
+m & new_m 40 45
+
+iteration 7
+beginning of step 7 memory used: 2.01 GB
+    CPU time for df vj and vk     77.18 sec, wall time      5.05 sec
+    CPU time for df vj and vk     56.49 sec, wall time      2.87 sec
+subspace size: 45
+Maximum residual norm:  7.31e-04
+unconverged states [0, 1, 2, 3, 4]
+sTDDFT_preconditioner conv 0.01
+sTDDFT preconditioning Done
+after 8 steps; 0.6494 s
+final subspace 31
+max_norm =  7.73e-03
+initial_cost 0.0196s  3.02%
+MVcost     0.2045s  31.49%
+GScost     0.2236s  34.44%
+subgencost 0.1434s  22.08%
+subcost    0.0092s  1.41%
+m & new_m 45 50
+
+iteration 8
+beginning of step 8 memory used: 2.01 GB
+    CPU time for df vj and vk     75.66 sec, wall time      5.02 sec
+    CPU time for df vj and vk     56.43 sec, wall time      2.87 sec
+subspace size: 50
+Maximum residual norm:  3.40e-04
+unconverged states [2, 3, 4]
+sTDDFT_preconditioner conv 0.01
+sTDDFT preconditioning Done
+after 8 steps; 0.3766 s
+final subspace 22
+max_norm =  7.01e-03
+initial_cost 0.0088s  2.35%
+MVcost     0.1537s  40.80%
+GScost     0.0980s  26.02%
+subgencost 0.0736s  19.55%
+subcost    0.0078s  2.07%
+m & new_m 50 53
+
+iteration 9
+beginning of step 9 memory used: 2.01 GB
+    CPU time for df vj and vk     46.53 sec, wall time      3.12 sec
+    CPU time for df vj and vk     34.37 sec, wall time      1.76 sec
+subspace size: 53
+Maximum residual norm:  1.05e-04
+unconverged states [3, 4]
+sTDDFT_preconditioner conv 0.01
+sTDDFT preconditioning Done
+after 8 steps; 0.2484 s
+final subspace 15
+max_norm =  6.91e-03
+initial_cost 0.0050s  2.02%
+MVcost     0.1132s  45.56%
+GScost     0.0502s  20.22%
+subgencost 0.0485s  19.52%
+subcost    0.0054s  2.17%
+m & new_m 53 55
+
+iteration 10
+beginning of step 10 memory used: 2.01 GB
+    CPU time for df vj and vk     31.68 sec, wall time      2.18 sec
+    CPU time for df vj and vk     22.96 sec, wall time      1.16 sec
+subspace size: 55
+Maximum residual norm:  4.70e-05
+unconverged states [3, 4]
+sTDDFT_preconditioner conv 0.01
+sTDDFT preconditioning Done
+after 9 steps; 0.2863 s
+final subspace 17
+max_norm =  4.12e-03
+initial_cost 0.0050s  1.73%
+MVcost     0.1269s  44.34%
+GScost     0.0603s  21.06%
+subgencost 0.0582s  20.33%
+subcost    0.0062s  2.18%
+m & new_m 55 57
+
+iteration 11
+beginning of step 11 memory used: 2.01 GB
+    CPU time for df vj and vk     30.77 sec, wall time      2.07 sec
+    CPU time for df vj and vk     23.43 sec, wall time      1.21 sec
+subspace size: 57
+Maximum residual norm:  1.90e-05
+unconverged states [4]
+sTDDFT_preconditioner conv 0.01
+sTDDFT preconditioning Done
+after 9 steps; 0.1553 s
+final subspace 9
+max_norm =  5.53e-03
+initial_cost 0.0020s  1.28%
+MVcost     0.0837s  53.89%
+GScost     0.0202s  13.00%
+subgencost 0.0297s  19.14%
+subcost    0.0047s  3.02%
+m & new_m 57 58
+
+iteration 12
+beginning of step 12 memory used: 2.01 GB
+    CPU time for df vj and vk     15.86 sec, wall time      1.19 sec
+    CPU time for df vj and vk     11.59 sec, wall time      0.59 sec
+subspace size: 58
+Maximum residual norm:  5.73e-06
+TDDFT precedure Done
+
+============= TDDFT Calculation Done ==============
+after 13 iterations 173.01 s
+Final subspace  58
+preconditioning cost 6.9536 0.04 %
+max_norm =  5.73e-06
+Total TDDFT memory used: 2.01 GB
+Excited State energies (eV) =
+ [4.52442332 4.57794891 5.29953412 5.64353216 5.69517048]
+
+Number of excited states = 5
+Initial guess:   Adiag
+Preconditioner:  Adiag
+A matrix size =  21978
+new_m = 10
+initial guess done
+
+iteration 0
+beginning of step 0 memory used: 1.97 GB
+    CPU time for df vj and vk    152.86 sec, wall time      9.83 sec
+    CPU time for df vj and vk    110.90 sec, wall time      5.67 sec
+subspace size: 10
+Maximum residual norm:  1.30e-01
+unconverged states [0, 1, 2, 3, 4]
+m & new_m 10 15
+
+iteration 1
+beginning of step 1 memory used: 1.97 GB
+    CPU time for df vj and vk     75.62 sec, wall time      4.97 sec
+    CPU time for df vj and vk     56.57 sec, wall time      2.88 sec
+subspace size: 15
+Maximum residual norm:  5.86e-02
+unconverged states [0, 1, 2, 3, 4]
+m & new_m 15 20
+
+iteration 2
+beginning of step 2 memory used: 2.00 GB
+    CPU time for df vj and vk     76.61 sec, wall time      5.10 sec
+    CPU time for df vj and vk     56.54 sec, wall time      2.88 sec
+subspace size: 20
+Maximum residual norm:  3.90e-02
+unconverged states [0, 1, 2, 3, 4]
+m & new_m 20 25
+
+iteration 3
+beginning of step 3 memory used: 2.00 GB
+    CPU time for df vj and vk     76.09 sec, wall time      4.97 sec
+    CPU time for df vj and vk     55.97 sec, wall time      2.84 sec
+subspace size: 25
+Maximum residual norm:  2.90e-02
+unconverged states [0, 1, 2, 3, 4]
+m & new_m 25 30
+
+iteration 4
+beginning of step 4 memory used: 2.00 GB
+    CPU time for df vj and vk     77.43 sec, wall time      5.11 sec
+    CPU time for df vj and vk     56.76 sec, wall time      2.91 sec
+subspace size: 30
+Maximum residual norm:  1.61e-02
+unconverged states [0, 1, 2, 3, 4]
+m & new_m 30 35
+
+iteration 5
+beginning of step 5 memory used: 2.00 GB
+    CPU time for df vj and vk     76.73 sec, wall time      5.09 sec
+    CPU time for df vj and vk     57.56 sec, wall time      2.95 sec
+subspace size: 35
+Maximum residual norm:  1.44e-02
+unconverged states [0, 1, 2, 3, 4]
+m & new_m 35 40
+
+iteration 6
+beginning of step 6 memory used: 2.00 GB
+    CPU time for df vj and vk     78.06 sec, wall time      5.16 sec
+    CPU time for df vj and vk     56.76 sec, wall time      2.88 sec
+subspace size: 40
+Maximum residual norm:  1.27e-02
+unconverged states [0, 1, 2, 3, 4]
+m & new_m 40 45
+
+iteration 7
+beginning of step 7 memory used: 2.00 GB
+    CPU time for df vj and vk     78.11 sec, wall time      5.15 sec
+    CPU time for df vj and vk     57.22 sec, wall time      2.94 sec
+subspace size: 45
+Maximum residual norm:  9.94e-03
+unconverged states [0, 1, 2, 3, 4]
+m & new_m 45 50
+
+iteration 8
+beginning of step 8 memory used: 2.00 GB
+    CPU time for df vj and vk     77.35 sec, wall time      5.09 sec
+    CPU time for df vj and vk     56.43 sec, wall time      2.89 sec
+subspace size: 50
+Maximum residual norm:  8.51e-03
+unconverged states [0, 1, 2, 3, 4]
+m & new_m 50 55
+
+iteration 9
+beginning of step 9 memory used: 2.00 GB
+    CPU time for df vj and vk     76.66 sec, wall time      5.07 sec
+    CPU time for df vj and vk     56.79 sec, wall time      2.92 sec
+subspace size: 55
+Maximum residual norm:  4.73e-03
+unconverged states [0, 1, 2, 3, 4]
+m & new_m 55 60
+
+iteration 10
+beginning of step 10 memory used: 2.00 GB
+    CPU time for df vj and vk     76.40 sec, wall time      4.99 sec
+    CPU time for df vj and vk     56.50 sec, wall time      2.93 sec
+subspace size: 60
+Maximum residual norm:  3.08e-03
+unconverged states [0, 1, 2, 3, 4]
+m & new_m 60 65
+
+iteration 11
+beginning of step 11 memory used: 2.00 GB
+    CPU time for df vj and vk     77.00 sec, wall time      5.06 sec
+    CPU time for df vj and vk     57.06 sec, wall time      2.90 sec
+subspace size: 65
+Maximum residual norm:  1.79e-03
+unconverged states [0, 1, 2, 3, 4]
+m & new_m 65 70
+
+iteration 12
+beginning of step 12 memory used: 2.00 GB
+    CPU time for df vj and vk     76.47 sec, wall time      5.01 sec
+    CPU time for df vj and vk     56.49 sec, wall time      2.90 sec
+subspace size: 70
+Maximum residual norm:  9.56e-04
+unconverged states [2, 3, 4]
+m & new_m 70 73
+
+iteration 13
+beginning of step 13 memory used: 2.00 GB
+    CPU time for df vj and vk     46.92 sec, wall time      3.18 sec
+    CPU time for df vj and vk     35.02 sec, wall time      1.82 sec
+subspace size: 73
+Maximum residual norm:  5.53e-04
+unconverged states [2, 3, 4]
+m & new_m 73 76
+
+iteration 14
+beginning of step 14 memory used: 2.00 GB
+    CPU time for df vj and vk     46.23 sec, wall time      3.12 sec
+    CPU time for df vj and vk     33.80 sec, wall time      1.71 sec
+subspace size: 76
+Maximum residual norm:  2.97e-04
+unconverged states [3, 4]
+m & new_m 76 78
+
+iteration 15
+beginning of step 15 memory used: 2.00 GB
+    CPU time for df vj and vk     30.59 sec, wall time      2.12 sec
+    CPU time for df vj and vk     22.90 sec, wall time      1.16 sec
+subspace size: 78
+Maximum residual norm:  1.73e-04
+unconverged states [3, 4]
+m & new_m 78 80
+
+iteration 16
+beginning of step 16 memory used: 2.00 GB
+    CPU time for df vj and vk     30.97 sec, wall time      1.94 sec
+    CPU time for df vj and vk     22.69 sec, wall time      1.17 sec
+subspace size: 80
+Maximum residual norm:  9.76e-05
+unconverged states [3, 4]
+m & new_m 80 82
+
+iteration 17
+beginning of step 17 memory used: 2.00 GB
+    CPU time for df vj and vk     30.84 sec, wall time      2.13 sec
+    CPU time for df vj and vk     22.87 sec, wall time      1.16 sec
+subspace size: 82
+Maximum residual norm:  5.50e-05
+unconverged states [3, 4]
+m & new_m 82 84
+
+iteration 18
+beginning of step 18 memory used: 2.00 GB
+    CPU time for df vj and vk     31.60 sec, wall time      2.22 sec
+    CPU time for df vj and vk     22.63 sec, wall time      1.15 sec
+subspace size: 84
+Maximum residual norm:  2.53e-05
+unconverged states [3, 4]
+m & new_m 84 86
+
+iteration 19
+beginning of step 19 memory used: 2.00 GB
+    CPU time for df vj and vk     30.98 sec, wall time      1.93 sec
+    CPU time for df vj and vk     22.59 sec, wall time      1.15 sec
+subspace size: 86
+Maximum residual norm:  1.12e-05
+unconverged states [3]
+m & new_m 86 87
+
+iteration 20
+beginning of step 20 memory used: 2.00 GB
+    CPU time for df vj and vk     16.27 sec, wall time      1.08 sec
+    CPU time for df vj and vk     12.12 sec, wall time      0.64 sec
+subspace size: 87
+Maximum residual norm:  4.94e-06
+TDDFT precedure Done
+
+============= TDDFT Calculation Done ==============
+after 21 iterations 245.26 s
+Final subspace  87
+preconditioning cost 0.0658 0.00 %
+max_norm =  4.94e-06
+Total TDDFT memory used: 2.00 GB
+Excited State energies (eV) =
+ [4.52442332 4.57794891 5.29953412 5.64353216 5.69517048]
+xyzfile = 21_Si_nano.xyz
+checkfile = True
+method = RKS
+functional = wb97x
+basis_set = def2-tzvp
+density_fit = True
+grid_level = 3
+nstates = 5
+pytd = False
+TDA = False
+TDDFT = True
+dynpol = False
+dynpol_omega = []
+stapol = False
+sTDA = False
+sTDDFT = False
+Truncate_test = False
+truncate_virtual = 40.0
+ip_options = [0, 1]
+conv_tolerance = 1e-05
+initial_TOL = 0.001
+precond_TOL = 0.01
+extrainitial = 8
+max = 30
+eigensolver_tol = 1e-05
+memory = 50000
+verbose = 5
+beta = []
+alpha = []
+|-------- In-house Developed TDDFT Ends ----------|

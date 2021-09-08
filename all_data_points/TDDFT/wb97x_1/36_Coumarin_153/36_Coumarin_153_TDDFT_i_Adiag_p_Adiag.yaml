@@ -1,0 +1,67 @@
+A matrix size: 54880
+Dynamic polarizability initial tensor alpha: null
+Dynamic polarizability tensor alpha: null
+Dynamic polarizability wavelength: []
+Initial guess time: 0.011119842529296875
+New guess generating time: 0.03313255310058594
+SCF time: 89.53039765357971
+alpha: 4.58
+ax: 0.56
+beta: 8.0
+excitation energy(eV):
+- 3.7465064967363517
+final subspace size: 18
+functional: wb97x
+initial guess: Adiag
+initial guess threshold: 0.001
+initial_energies:
+- 7.576026249610701
+iteration:
+- residual norms:
+  - 0.18842601266755643
+- residual norms:
+  - 0.059409013481174666
+- residual norms:
+  - 0.03562345417352559
+- residual norms:
+  - 0.01743363156410187
+- residual norms:
+  - 0.0076381184946977595
+- residual norms:
+  - 0.004176164615989573
+- residual norms:
+  - 0.002649465961221446
+- residual norms:
+  - 0.001169606540942919
+- residual norms:
+  - 0.0005971000188762763
+- residual norms:
+  - 0.000414257502292538
+- residual norms:
+  - 0.00022557744663522292
+- residual norms:
+  - 0.00012457599760152605
+- residual norms:
+  - 7.594203519302337e-05
+- residual norms:
+  - 5.3816631544700245e-05
+- residual norms:
+  - 2.9952286386031247e-05
+- residual norms:
+  - 1.454284544330038e-05
+- residual norms:
+  - 8.50730545373023e-06
+iterations: 17
+max_vir: 178
+method: RKS
+molecule: 36_Coumarin_153
+n_occ: 80
+n_vir: 686
+nstate: 1
+overlap: 0.9594078141643132
+preconditioner: Adiag
+preconditioner threshold: 0.01
+semiempirical_difference: 14.665221537654816
+threshold: 1.0e-05
+total time: 352.6161811351776
+virtual truncation tol: 40.0

@@ -1,0 +1,55 @@
+A matrix size: 111777
+Dynamic polarizability initial tensor alpha: null
+Dynamic polarizability tensor alpha: null
+Dynamic polarizability wavelength: []
+Initial guess time: 1.5864489078521729
+New guess generating time: 6.315392732620239
+SCF time: 458.8762137889862
+alpha: 4.58
+ax: 0.56
+beta: 8.0
+excitation energy(eV):
+- 2.963538478359974
+final subspace size: 12
+functional: wb97x
+initial guess: sTDDFT
+initial guess threshold: 0.001
+initial_energies:
+- 2.871507086836773
+iteration:
+- residual norms:
+  - 0.12615186851275662
+- residual norms:
+  - 0.03501130028572514
+- residual norms:
+  - 0.017239885406162468
+- residual norms:
+  - 0.006955774262793007
+- residual norms:
+  - 0.002804284889944926
+- residual norms:
+  - 0.0011174909948635757
+- residual norms:
+  - 0.00045165686205270666
+- residual norms:
+  - 0.00014348728391115492
+- residual norms:
+  - 6.393172142796951e-05
+- residual norms:
+  - 2.6218199704458193e-05
+- residual norms:
+  - 8.692616612481488e-06
+iterations: 11
+max_vir: 277
+method: RKS
+molecule: 53_Coelenterazine
+n_occ: 111
+n_vir: 1007
+nstate: 1
+overlap: 1.0188187119954952
+preconditioner: sTDDFT
+preconditioner threshold: 0.01
+semiempirical_difference: 0.008469777025696703
+threshold: 1.0e-05
+total time: 902.6975829601288
+virtual truncation tol: 40.0

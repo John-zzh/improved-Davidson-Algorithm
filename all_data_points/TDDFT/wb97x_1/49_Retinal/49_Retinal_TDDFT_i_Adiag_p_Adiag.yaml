@@ -1,0 +1,69 @@
+A matrix size: 57798
+Dynamic polarizability initial tensor alpha: null
+Dynamic polarizability tensor alpha: null
+Dynamic polarizability wavelength: []
+Initial guess time: 0.0125732421875
+New guess generating time: 0.03359055519104004
+SCF time: 109.11664319038391
+alpha: 4.58
+ax: 0.56
+beta: 8.0
+excitation energy(eV):
+- 3.39484239743861
+final subspace size: 19
+functional: wb97x
+initial guess: Adiag
+initial guess threshold: 0.001
+initial_energies:
+- 6.780585024541618
+iteration:
+- residual norms:
+  - 0.16763235462201534
+- residual norms:
+  - 0.05088897376456845
+- residual norms:
+  - 0.03091455433668432
+- residual norms:
+  - 0.01246558967198735
+- residual norms:
+  - 0.005811608296550928
+- residual norms:
+  - 0.0034023576735180182
+- residual norms:
+  - 0.002035761746402902
+- residual norms:
+  - 0.0009242764968106693
+- residual norms:
+  - 0.00037760708275575084
+- residual norms:
+  - 0.00017138278947305413
+- residual norms:
+  - 8.029066081734651e-05
+- residual norms:
+  - 3.983034058503782e-05
+- residual norms:
+  - 2.2887518463317654e-05
+- residual norms:
+  - 2.7885909423004823e-05
+- residual norms:
+  - 3.7875804160817694e-05
+- residual norms:
+  - 2.4817110484189576e-05
+- residual norms:
+  - 1.0546879082033514e-05
+- residual norms:
+  - 4.611790901409408e-06
+iterations: 18
+max_vir: 214
+method: RKS
+molecule: 49_Retinal
+n_occ: 78
+n_vir: 741
+nstate: 1
+overlap: 0.9643465761745749
+preconditioner: Adiag
+preconditioner threshold: 0.01
+semiempirical_difference: 11.463253136982377
+threshold: 1.0e-05
+total time: 467.2214684486389
+virtual truncation tol: 40.0

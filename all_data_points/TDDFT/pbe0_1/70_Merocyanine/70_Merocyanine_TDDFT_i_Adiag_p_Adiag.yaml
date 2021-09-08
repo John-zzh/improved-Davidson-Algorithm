@@ -1,0 +1,59 @@
+A matrix size: 170610
+Dynamic polarizability initial tensor alpha: null
+Dynamic polarizability tensor alpha: null
+Dynamic polarizability wavelength: []
+Initial guess time: 0.035755157470703125
+New guess generating time: 0.10776972770690918
+SCF time: 835.346198797226
+alpha: 1.54
+ax: 0.25
+beta: 0.6575
+excitation energy(eV):
+- 2.9527857462741145
+final subspace size: 14
+functional: pbe0
+initial guess: Adiag
+initial guess threshold: 0.001
+initial_energies:
+- 3.2339069161878937
+iteration:
+- residual norms:
+  - 0.16629229367410178
+- residual norms:
+  - 0.05373975089651588
+- residual norms:
+  - 0.022821494259232602
+- residual norms:
+  - 0.009421718688410347
+- residual norms:
+  - 0.003530228373428245
+- residual norms:
+  - 0.0017717140788927183
+- residual norms:
+  - 0.0005877529736805417
+- residual norms:
+  - 0.0002452624512225873
+- residual norms:
+  - 0.00010769174444236513
+- residual norms:
+  - 5.400368224656762e-05
+- residual norms:
+  - 2.4519353321746318e-05
+- residual norms:
+  - 1.2055760338286138e-05
+- residual norms:
+  - 5.069125396267278e-06
+iterations: 13
+max_vir: 362
+method: RKS
+molecule: 70_Merocyanine
+n_occ: 141
+n_vir: 1210
+nstate: 1
+overlap: 0.9985464008641673
+preconditioner: Adiag
+preconditioner threshold: 0.01
+semiempirical_difference: 0.07902911217369193
+threshold: 1.0e-05
+total time: 1471.559992313385
+virtual truncation tol: 40.0

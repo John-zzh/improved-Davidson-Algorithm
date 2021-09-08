@@ -1,0 +1,81 @@
+A matrix size: 39312
+Dynamic polarizability initial tensor alpha: null
+Dynamic polarizability tensor alpha: null
+Dynamic polarizability wavelength: []
+Initial guess time: 0.007531166076660156
+New guess generating time: 0.04216814041137695
+SCF time: 49.54609417915344
+alpha: 4.58
+ax: 0.56
+beta: 8.0
+excitation energy(eV):
+- 4.352434550428406
+final subspace size: 25
+functional: wb97x
+initial guess: Adiag
+initial guess threshold: 0.001
+initial_energies:
+- 8.298803462805406
+iteration:
+- residual norms:
+  - 0.1944996782694649
+- residual norms:
+  - 0.05781014545381291
+- residual norms:
+  - 0.039683088966133
+- residual norms:
+  - 0.019201759151476313
+- residual norms:
+  - 0.011956233291958067
+- residual norms:
+  - 0.009516701466317523
+- residual norms:
+  - 0.007640376049798525
+- residual norms:
+  - 0.005972483034305644
+- residual norms:
+  - 0.004974657859876957
+- residual norms:
+  - 0.003357636364998548
+- residual norms:
+  - 0.002089819622398132
+- residual norms:
+  - 0.0013444140361993913
+- residual norms:
+  - 0.0007304934951398091
+- residual norms:
+  - 0.0005202249717912488
+- residual norms:
+  - 0.0003551675718716403
+- residual norms:
+  - 0.0003414004498836958
+- residual norms:
+  - 0.00021725139463776483
+- residual norms:
+  - 0.00012675168984410958
+- residual norms:
+  - 5.6283491740700794e-05
+- residual norms:
+  - 2.6073804123115807e-05
+- residual norms:
+  - 1.930680443813339e-05
+- residual norms:
+  - 1.5053235438319515e-05
+- residual norms:
+  - 1.4082620522243077e-05
+- residual norms:
+  - 7.21797074676715e-06
+iterations: 24
+max_vir: 147
+method: RKS
+molecule: 26_Firefly_luciferin
+n_occ: 72
+n_vir: 546
+nstate: 1
+overlap: 0.9382901565165293
+preconditioner: Adiag
+preconditioner threshold: 0.01
+semiempirical_difference: 15.573827592575627
+threshold: 1.0e-05
+total time: 250.5047104358673
+virtual truncation tol: 40.0

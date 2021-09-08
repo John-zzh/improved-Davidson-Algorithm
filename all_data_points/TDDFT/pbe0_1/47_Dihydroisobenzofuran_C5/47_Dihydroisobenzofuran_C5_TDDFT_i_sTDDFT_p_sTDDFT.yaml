@@ -1,0 +1,51 @@
+A matrix size: 75780
+Dynamic polarizability initial tensor alpha: null
+Dynamic polarizability tensor alpha: null
+Dynamic polarizability wavelength: []
+Initial guess time: 0.6479892730712891
+New guess generating time: 3.39680552482605
+SCF time: 183.3830006122589
+alpha: 1.54
+ax: 0.25
+beta: 0.6575
+excitation energy(eV):
+- 2.735517239148837
+final subspace size: 10
+functional: pbe0
+initial guess: sTDDFT
+initial guess threshold: 0.001
+initial_energies:
+- 2.5089163791124123
+iteration:
+- residual norms:
+  - 0.08009095427950941
+- residual norms:
+  - 0.01934100078760226
+- residual norms:
+  - 0.007295553912108775
+- residual norms:
+  - 0.0020633137540040946
+- residual norms:
+  - 0.0006168568193995216
+- residual norms:
+  - 0.0001813181538235995
+- residual norms:
+  - 4.862583551248358e-05
+- residual norms:
+  - 1.4576556707196532e-05
+- residual norms:
+  - 4.726876127043678e-06
+iterations: 9
+max_vir: 266
+method: RKS
+molecule: 47_Dihydroisobenzofuran_C5
+n_occ: 90
+n_vir: 842
+nstate: 1
+overlap: 1.021379869953605
+preconditioner: sTDDFT
+preconditioner threshold: 0.01
+semiempirical_difference: 0.051347949769247316
+threshold: 1.0e-05
+total time: 255.97586059570312
+virtual truncation tol: 40.0

@@ -1,0 +1,53 @@
+A matrix size: 54880
+Dynamic polarizability initial tensor alpha: null
+Dynamic polarizability tensor alpha: null
+Dynamic polarizability wavelength: []
+Initial guess time: 0.40310049057006836
+New guess generating time: 1.7665016651153564
+SCF time: 89.53039765357971
+alpha: 4.58
+ax: 0.56
+beta: 8.0
+excitation energy(eV):
+- 3.746506497318664
+final subspace size: 11
+functional: wb97x
+initial guess: sTDDFT
+initial guess threshold: 0.001
+initial_energies:
+- 3.7325678017890613
+iteration:
+- residual norms:
+  - 0.1441309382375034
+- residual norms:
+  - 0.04209710805531157
+- residual norms:
+  - 0.019566537214334385
+- residual norms:
+  - 0.006324479360073143
+- residual norms:
+  - 0.002260703926580588
+- residual norms:
+  - 0.00071978162446503
+- residual norms:
+  - 0.00031979621709219016
+- residual norms:
+  - 8.97247736327924e-05
+- residual norms:
+  - 2.845983013760205e-05
+- residual norms:
+  - 9.841004117259188e-06
+iterations: 10
+max_vir: 178
+method: RKS
+molecule: 36_Coumarin_153
+n_occ: 80
+n_vir: 686
+nstate: 1
+overlap: 1.010443144777971
+preconditioner: sTDDFT
+preconditioner threshold: 0.01
+semiempirical_difference: 0.00019428723306696928
+threshold: 1.0e-05
+total time: 212.86007976531982
+virtual truncation tol: 40.0

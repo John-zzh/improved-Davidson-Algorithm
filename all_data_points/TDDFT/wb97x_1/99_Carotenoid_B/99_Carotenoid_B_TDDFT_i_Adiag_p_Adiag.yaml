@@ -1,0 +1,59 @@
+A matrix size: 224298
+Dynamic polarizability initial tensor alpha: null
+Dynamic polarizability tensor alpha: null
+Dynamic polarizability wavelength: []
+Initial guess time: 0.04984569549560547
+New guess generating time: 0.08508110046386719
+SCF time: 1541.6777393817902
+alpha: 4.58
+ax: 0.56
+beta: 8.0
+excitation energy(eV):
+- 2.273680976333839
+final subspace size: 14
+functional: wb97x
+initial guess: Adiag
+initial guess threshold: 0.001
+initial_energies:
+- 5.252000816488406
+iteration:
+- residual norms:
+  - 0.1353806994696287
+- residual norms:
+  - 0.05498188882887241
+- residual norms:
+  - 0.02608760369910273
+- residual norms:
+  - 0.009687616822562492
+- residual norms:
+  - 0.003883075101359067
+- residual norms:
+  - 0.0015653276731057977
+- residual norms:
+  - 0.0008071964435881464
+- residual norms:
+  - 0.00043871577990333273
+- residual norms:
+  - 0.00016561826421154335
+- residual norms:
+  - 7.549787336080373e-05
+- residual norms:
+  - 3.215788035481376e-05
+- residual norms:
+  - 1.7864594678462683e-05
+- residual norms:
+  - 9.356089110539512e-06
+iterations: 13
+max_vir: 438
+method: RKS
+molecule: 99_Carotenoid_B
+n_occ: 153
+n_vir: 1466
+nstate: 1
+overlap: 0.936081439547142
+preconditioner: Adiag
+preconditioner threshold: 0.01
+semiempirical_difference: 8.87038907025833
+threshold: 1.0e-05
+total time: 4170.0462827682495
+virtual truncation tol: 40.0

@@ -1,0 +1,61 @@
+A matrix size: 109675
+Dynamic polarizability initial tensor alpha: null
+Dynamic polarizability tensor alpha: null
+Dynamic polarizability wavelength: []
+Initial guess time: 0.021778345108032227
+New guess generating time: 0.0489504337310791
+SCF time: 346.62016010284424
+alpha: 4.58
+ax: 0.56
+beta: 8.0
+excitation energy(eV):
+- 4.72718915406098
+final subspace size: 15
+functional: wb97x
+initial guess: Adiag
+initial guess threshold: 0.001
+initial_energies:
+- 8.97107334693979
+iteration:
+- residual norms:
+  - 0.19212788408421375
+- residual norms:
+  - 0.04850236466259934
+- residual norms:
+  - 0.02411628109409406
+- residual norms:
+  - 0.010082621460838053
+- residual norms:
+  - 0.004643239433597992
+- residual norms:
+  - 0.0023621464427910775
+- residual norms:
+  - 0.0010761810743459097
+- residual norms:
+  - 0.0006233370878341136
+- residual norms:
+  - 0.00030592843840857145
+- residual norms:
+  - 0.00015163506659445836
+- residual norms:
+  - 8.110174511300321e-05
+- residual norms:
+  - 3.796808598277816e-05
+- residual norms:
+  - 1.4805376487806039e-05
+- residual norms:
+  - 6.354076630745149e-06
+iterations: 14
+max_vir: 285
+method: RKS
+molecule: 72_Vitamin_D3
+n_occ: 107
+n_vir: 1025
+nstate: 1
+overlap: 0.9865012758784618
+preconditioner: Adiag
+preconditioner threshold: 0.01
+semiempirical_difference: 18.010553042566624
+threshold: 1.0e-05
+total time: 1225.4591240882874
+virtual truncation tol: 40.0

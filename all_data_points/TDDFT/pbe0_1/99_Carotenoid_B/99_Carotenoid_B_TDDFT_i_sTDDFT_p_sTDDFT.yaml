@@ -1,0 +1,51 @@
+A matrix size: 224298
+Dynamic polarizability initial tensor alpha: null
+Dynamic polarizability tensor alpha: null
+Dynamic polarizability wavelength: []
+Initial guess time: 4.642945766448975
+New guess generating time: 17.972445726394653
+SCF time: 1305.261390209198
+alpha: 1.54
+ax: 0.25
+beta: 0.6575
+excitation energy(eV):
+- 1.903405381412272
+final subspace size: 10
+functional: pbe0
+initial guess: sTDDFT
+initial guess threshold: 0.001
+initial_energies:
+- 1.6453719208016926
+iteration:
+- residual norms:
+  - 0.08871665747342523
+- residual norms:
+  - 0.018715868785603464
+- residual norms:
+  - 0.006396083730596297
+- residual norms:
+  - 0.001673395292777798
+- residual norms:
+  - 0.0004347526241146465
+- residual norms:
+  - 0.00013346411962900128
+- residual norms:
+  - 3.953554111388522e-05
+- residual norms:
+  - 1.1037225710856783e-05
+- residual norms:
+  - 3.885258844749725e-06
+iterations: 9
+max_vir: 480
+method: RKS
+molecule: 99_Carotenoid_B
+n_occ: 153
+n_vir: 1466
+nstate: 1
+overlap: 1.079681177219079
+preconditioner: sTDDFT
+preconditioner threshold: 0.01
+semiempirical_difference: 0.06658126679467144
+threshold: 1.0e-05
+total time: 1938.1626648902893
+virtual truncation tol: 40.0

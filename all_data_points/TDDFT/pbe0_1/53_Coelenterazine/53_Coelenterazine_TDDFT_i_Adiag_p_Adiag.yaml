@@ -1,0 +1,59 @@
+A matrix size: 111777
+Dynamic polarizability initial tensor alpha: null
+Dynamic polarizability tensor alpha: null
+Dynamic polarizability wavelength: []
+Initial guess time: 0.026996612548828125
+New guess generating time: 0.04848837852478027
+SCF time: 340.7756109237671
+alpha: 1.54
+ax: 0.25
+beta: 0.6575
+excitation energy(eV):
+- 2.716998749838024
+final subspace size: 14
+functional: pbe0
+initial guess: Adiag
+initial guess threshold: 0.001
+initial_energies:
+- 3.372423352824578
+iteration:
+- residual norms:
+  - 0.15842115231696763
+- residual norms:
+  - 0.04663791012314131
+- residual norms:
+  - 0.02988544565654382
+- residual norms:
+  - 0.010994488597666215
+- residual norms:
+  - 0.005321708329694957
+- residual norms:
+  - 0.0020495370966935465
+- residual norms:
+  - 0.0011445230407858163
+- residual norms:
+  - 0.00042227458863960466
+- residual norms:
+  - 0.00019646228083860352
+- residual norms:
+  - 8.309687377145691e-05
+- residual norms:
+  - 4.055591586848293e-05
+- residual norms:
+  - 1.6976681942015828e-05
+- residual norms:
+  - 8.742106827311208e-06
+iterations: 13
+max_vir: 308
+method: RKS
+molecule: 53_Coelenterazine
+n_occ: 111
+n_vir: 1007
+nstate: 1
+overlap: 0.98711836660566
+preconditioner: Adiag
+preconditioner threshold: 0.01
+semiempirical_difference: 0.42958141020008195
+threshold: 1.0e-05
+total time: 707.2708249092102
+virtual truncation tol: 40.0

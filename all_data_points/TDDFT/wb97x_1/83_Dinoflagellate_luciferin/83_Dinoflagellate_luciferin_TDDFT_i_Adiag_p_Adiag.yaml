@@ -1,0 +1,101 @@
+A matrix size: 222312
+Dynamic polarizability initial tensor alpha: null
+Dynamic polarizability tensor alpha: null
+Dynamic polarizability wavelength: []
+Initial guess time: 0.03619790077209473
+New guess generating time: 0.19347023963928223
+SCF time: 2164.976719379425
+alpha: 4.58
+ax: 0.56
+beta: 8.0
+excitation energy(eV):
+- 4.19199757444006
+final subspace size: 35
+functional: wb97x
+initial guess: Adiag
+initial guess threshold: 0.001
+initial_energies:
+- 7.599420877771319
+iteration:
+- residual norms:
+  - 0.05392843809721766
+- residual norms:
+  - 0.028848417803575815
+- residual norms:
+  - 0.017588450674664573
+- residual norms:
+  - 0.012627550918111154
+- residual norms:
+  - 0.010619358778541373
+- residual norms:
+  - 0.009599609716724062
+- residual norms:
+  - 0.010625805004463409
+- residual norms:
+  - 0.014708231391467269
+- residual norms:
+  - 0.025662065688509858
+- residual norms:
+  - 0.024897718132432016
+- residual norms:
+  - 0.022773482060518737
+- residual norms:
+  - 0.013137550665044549
+- residual norms:
+  - 0.008433974507150525
+- residual norms:
+  - 0.004742142034162774
+- residual norms:
+  - 0.0026291846050680175
+- residual norms:
+  - 0.001697051414228585
+- residual norms:
+  - 0.0010339697811269028
+- residual norms:
+  - 0.0007442905262533089
+- residual norms:
+  - 0.0005363740338688563
+- residual norms:
+  - 0.0004895901354893469
+- residual norms:
+  - 0.0004616708629629499
+- residual norms:
+  - 0.0005065596324106525
+- residual norms:
+  - 0.00045240970014334225
+- residual norms:
+  - 0.0003886669143306286
+- residual norms:
+  - 0.0003776718637025308
+- residual norms:
+  - 0.0003522876646845108
+- residual norms:
+  - 0.000328860665908142
+- residual norms:
+  - 0.00023471854256824882
+- residual norms:
+  - 0.000157548008508439
+- residual norms:
+  - 8.16735504313762e-05
+- residual norms:
+  - 4.012150171575153e-05
+- residual norms:
+  - 2.064330432292085e-05
+- residual norms:
+  - 1.0054786455432744e-05
+- residual norms:
+  - 6.516100141587641e-06
+iterations: 34
+max_vir: 373
+method: RKS
+molecule: 83_Dinoflagellate_luciferin
+n_occ: 157
+n_vir: 1416
+nstate: 1
+overlap: 0.32633874929894996
+preconditioner: Adiag
+preconditioner threshold: 0.01
+semiempirical_difference: 11.61053356808491
+threshold: 1.0e-05
+total time: 9635.683580160141
+virtual truncation tol: 40.0

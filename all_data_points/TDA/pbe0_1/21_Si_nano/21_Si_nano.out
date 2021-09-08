@@ -1,0 +1,9 @@
+curpath /scratch/pbsjobs/job.15971941.hpc
+lib.num_threads() =  16
+at beginning memory used: 51.77734375 MB
+mol.max_memory 50000
+
+
+System: uname_result(system='Linux', node='compt292', release='3.10.0-1127.el7.x86_64', version='#1 SMP Tue Feb 18 16:39:12 EST 2020', machine='x86_64', processor='x86_64')  Threads 16
+converged SCF energy = -2397.50768678643
+SCF Done after  15.829 seconds

@@ -1,0 +1,69 @@
+A matrix size: 106272
+Dynamic polarizability initial tensor alpha: null
+Dynamic polarizability tensor alpha: null
+Dynamic polarizability wavelength: []
+Initial guess time: 0.02293109893798828
+New guess generating time: 0.07440972328186035
+SCF time: 378.9626443386078
+alpha: 1.54
+ax: 0.25
+beta: 0.6575
+excitation energy(eV):
+- 3.517715068939286
+final subspace size: 19
+functional: pbe0
+initial guess: Adiag
+initial guess threshold: 0.001
+initial_energies:
+- 4.220297785092439
+iteration:
+- residual norms:
+  - 0.04138499393725701
+- residual norms:
+  - 0.031583420645402364
+- residual norms:
+  - 0.0625162927309287
+- residual norms:
+  - 0.024725229306808618
+- residual norms:
+  - 0.01563501911989133
+- residual norms:
+  - 0.005889122046919629
+- residual norms:
+  - 0.0033187646014269843
+- residual norms:
+  - 0.0021124625093347357
+- residual norms:
+  - 0.001278484546300108
+- residual norms:
+  - 0.0008253472531954866
+- residual norms:
+  - 0.0006599500984817168
+- residual norms:
+  - 0.00033575855956119406
+- residual norms:
+  - 0.00015774339628863172
+- residual norms:
+  - 8.798296603165407e-05
+- residual norms:
+  - 4.0342925547611996e-05
+- residual norms:
+  - 2.0947100413790917e-05
+- residual norms:
+  - 1.1801870264088057e-05
+- residual norms:
+  - 5.710230305295648e-06
+iterations: 18
+max_vir: 292
+method: RKS
+molecule: 57_Cypridina_luciferin
+n_occ: 108
+n_vir: 984
+nstate: 1
+overlap: 0.9918701169916804
+preconditioner: Adiag
+preconditioner threshold: 0.01
+semiempirical_difference: 0.4936224730371411
+threshold: 1.0e-05
+total time: 995.4421174526215
+virtual truncation tol: 40.0

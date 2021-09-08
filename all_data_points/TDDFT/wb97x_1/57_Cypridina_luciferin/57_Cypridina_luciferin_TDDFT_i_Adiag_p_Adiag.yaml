@@ -1,0 +1,77 @@
+A matrix size: 106272
+Dynamic polarizability initial tensor alpha: null
+Dynamic polarizability tensor alpha: null
+Dynamic polarizability wavelength: []
+Initial guess time: 0.022144556045532227
+New guess generating time: 0.08663606643676758
+SCF time: 292.5238378047943
+alpha: 4.58
+ax: 0.56
+beta: 8.0
+excitation energy(eV):
+- 4.044049978099514
+final subspace size: 23
+functional: wb97x
+initial guess: Adiag
+initial guess threshold: 0.001
+initial_energies:
+- 8.079937988538191
+iteration:
+- residual norms:
+  - 0.18589019197952708
+- residual norms:
+  - 0.05504368757794252
+- residual norms:
+  - 0.04941653604690209
+- residual norms:
+  - 0.024846104202468553
+- residual norms:
+  - 0.017881407012973933
+- residual norms:
+  - 0.014938403894069887
+- residual norms:
+  - 0.012986101978132762
+- residual norms:
+  - 0.010015911106978064
+- residual norms:
+  - 0.007626337688555911
+- residual norms:
+  - 0.005768074928213862
+- residual norms:
+  - 0.0035471853111594697
+- residual norms:
+  - 0.0021618545902164074
+- residual norms:
+  - 0.001184188555401532
+- residual norms:
+  - 0.0005752907314946847
+- residual norms:
+  - 0.0002782461429037482
+- residual norms:
+  - 0.00020627777396536873
+- residual norms:
+  - 0.00015600795293509135
+- residual norms:
+  - 0.00011364301608942014
+- residual norms:
+  - 6.749499847357849e-05
+- residual norms:
+  - 3.654627369223322e-05
+- residual norms:
+  - 2.1655606909972475e-05
+- residual norms:
+  - 9.45502080509511e-06
+iterations: 22
+max_vir: 262
+method: RKS
+molecule: 57_Cypridina_luciferin
+n_occ: 108
+n_vir: 984
+nstate: 1
+overlap: 0.8401725150370453
+preconditioner: Adiag
+preconditioner threshold: 0.01
+semiempirical_difference: 16.288392032802665
+threshold: 1.0e-05
+total time: 1588.7270150184631
+virtual truncation tol: 40.0
