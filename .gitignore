@@ -6,6 +6,8 @@ bin-release/
 
 # Other files and folders
 .settings/
+.gitignore
+**/.DS_Store
 
 # Executables
 *.swf
