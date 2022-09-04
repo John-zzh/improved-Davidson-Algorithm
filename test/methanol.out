@@ -1,0 +1,193 @@
+curpath /Users/zehaozhou/Desktop/project/davidson/improved-Davidson-Algorithm/test
+lib.num_threads() =  1
+at beginning memory used: 0.04 GB
+mol.max_memory 4000
+RKS
+Density fitting turned on
+Molecule built
+Calculating SCF Energy...
+converged SCF energy = -115.496877084465
+SCF Done after 1.50 seconds
+after SCF memory used: 0.05 GB
+a_x = 0.25
+beta = 0.6575
+alpha = 1.54
+n_occ =  9
+n_vir =  39
+max_vir =  16
+A_size =  351
+A_reduced_size = 144
+TDA
+|-------- In-house Developed TDA Starts ---------|
+Residual conv = 1e-05
+
+ Number of excited states =  5
+Initial guess:   sTDA
+Preconditioner:  sTDA
+sTDA nstate = 10
+sTDA A diagonalized in 2 steps;  0.0103 seconds
+threshold = 0.001
+sTDA excitation energies:
+[ 7.03627478  8.57307263  8.85593011  9.7763179   9.90475083 10.30194388
+ 10.90465289 11.49112641 11.56792121 11.67187507]
+initial guess time 0.0118 seconds
+
+
+Iteration  0
+subspace size:  10
+maximum residual norm 6.64e-02
+sTDA precond Done after 3 steps; 0.0053 seconds
+max_norm =  9.20e-03
+subgencost 0.0001s  2.23%
+mvcost     0.0031s  58.87%
+GScost     0.0005s  10.21%
+subcost    0.0007s  13.05%
+new generated guesses: 5
+iMVcost 0.6005
+icost 0.6087
+
+
+Iteration  1
+subspace size:  15
+maximum residual norm 1.39e-02
+sTDA precond Done after 6 steps; 0.0067 seconds
+max_norm =  7.30e-03
+subgencost 0.0001s  2.25%
+mvcost     0.0041s  61.12%
+GScost     0.0005s  8.17%
+subcost    0.0010s  14.55%
+new generated guesses: 5
+iMVcost 0.3295
+icost 0.3634
+
+
+Iteration  2
+subspace size:  20
+maximum residual norm 2.52e-03
+sTDA precond Done after 6 steps; 0.0067 seconds
+max_norm =  8.38e-03
+subgencost 0.0002s  2.28%
+mvcost     0.0041s  60.93%
+GScost     0.0006s  8.66%
+subcost    0.0010s  15.03%
+new generated guesses: 5
+iMVcost 0.3218
+icost 0.3341
+
+
+Iteration  3
+subspace size:  25
+maximum residual norm 2.73e-04
+sTDA precond Done after 6 steps; 0.0059 seconds
+max_norm =  8.16e-03
+subgencost 0.0001s  2.14%
+mvcost     0.0038s  64.98%
+GScost     0.0004s  7.37%
+subcost    0.0007s  12.58%
+new generated guesses: 3
+iMVcost 0.3068
+icost 0.3182
+
+
+Iteration  4
+subspace size:  28
+maximum residual norm 4.49e-05
+sTDA precond Done after 6 steps; 0.0056 seconds
+max_norm =  8.98e-03
+subgencost 0.0001s  1.90%
+mvcost     0.0038s  68.08%
+GScost     0.0003s  5.95%
+subcost    0.0006s  11.43%
+new generated guesses: 2
+iMVcost 0.2327
+icost 0.2406
+
+
+Iteration  5
+subspace size:  30
+maximum residual norm 5.66e-06
+iMVcost 0.1478
+icost 0.1549
+Davidson procedure Done 
+
+------- Davidson done -------
+max_norm =  5.664108499247067e-06
+Total steps = 6
+Total time: 2.0318 seconds
+MVcost 1.9390
+Final subspace shape = 30
+Precond time: 0.0680 seconds 3.35%
+Excited State energies (eV) =  
+ [ 7.28752902  8.93645414  9.18027206  9.92055206 10.16937577]
+
+ Number of excited states =  5
+Initial guess:   Adiag
+Preconditioner:  Adiag
+initial guess time 0.0005 seconds
+
+
+Iteration  0
+subspace size:  10
+maximum residual norm 7.61e-02
+new generated guesses: 5
+iMVcost 0.5574
+icost 0.5582
+
+
+Iteration  1
+subspace size:  15
+maximum residual norm 1.72e-02
+new generated guesses: 5
+iMVcost 0.3212
+icost 0.3220
+
+
+Iteration  2
+subspace size:  20
+maximum residual norm 4.27e-03
+new generated guesses: 5
+iMVcost 0.2806
+icost 0.2816
+
+
+Iteration  3
+subspace size:  25
+maximum residual norm 5.72e-04
+new generated guesses: 5
+iMVcost 0.2834
+icost 0.2844
+
+
+Iteration  4
+subspace size:  30
+maximum residual norm 8.71e-05
+new generated guesses: 2
+iMVcost 0.2722
+icost 0.2778
+
+
+Iteration  5
+subspace size:  32
+maximum residual norm 2.04e-05
+new generated guesses: 2
+iMVcost 0.1904
+icost 0.1917
+
+
+Iteration  6
+subspace size:  34
+maximum residual norm 6.81e-06
+iMVcost 0.1848
+icost 0.1922
+Davidson procedure Done 
+
+------- Davidson done -------
+max_norm =  6.812104118685094e-06
+Total steps = 7
+Total time: 2.1084 seconds
+MVcost 2.0899
+Final subspace shape = 34
+Precond time: 0.0005 seconds 0.02%
+Excited State energies (eV) =  
+ [ 7.28752902  8.93645414  9.18027206  9.92055206 10.16937577]
+|-------- In-house Developed TDA Ends ----------|
