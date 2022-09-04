@@ -2,13 +2,13 @@
 This is the demonstrative toy-code to show a faster Davidson algorithm with sTDA preconditioner. It contains all the codes and data points mentioned in our paper https://doi.org/10.1063/5.0071013
 
 ## Installation
-Required Python package: `PySCF`, see https://pyscf.org/install.html for detailed guidance.
+Required Python package: `PySCF`, see https://pyscf.org/install.html for detailed installation guidance.
 
 Required python libraries: `Numpy`, `opt_einsum`, `scipy`
 
 Required parallel environment: `openmpi/2.0.1`
 
-Aside from above requirements, no extra installation is required. Because this is just a toy python3 code to show the TDDFT speedup, not a serious quantum chemistry software. Contributors from `PySCF`, `Turbomole`, `Gaussian` and `Q-chem` are encouraged to incorporate this methodology to those software accordingly :-)
+Aside from above requirements, no extra installation is required. Because this is just a toy python3 code to show the TDDFT speedup, not a serious quantum chemistry software. Software developers from `PySCF`, `Turbomole`, `Gaussian` and `Q-chem` are encouraged to incorporate this method to their softwares accordingly :-)
 
 ## Usage
 `python <path_to_your_dir>/improved-Davidson-Algorithm/source/Davidson.py -x molecule.xyz -b def2-tzvp -m RKS -f FUNCTIONAL -n NSTATE -df True -TDA true -it 1e-3 -pt 1e-2 -o 0 1 -M PySCF_MEM -v 3 -chk True -TV 40 -max 35 > molecule.out`
