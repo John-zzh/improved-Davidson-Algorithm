@@ -1,6 +1,9 @@
 # Preconditioned Davidson Algorithm for TDDFT excitation energy calculations.
 This is the demonstrative toy-code to show a faster Davidson algorithm with sTDA preconditioner. It contains all the codes and data points mentioned in our paper https://doi.org/10.1063/5.0071013
 
+## This repo is nologer in usage, pleas refer to https://github.com/John-zzh/Davidson
+
+
 ## Installation
 Required Python package: `PySCF`, see https://pyscf.org/install.html for detailed installation guidance.
 
